@@ -1,0 +1,58 @@
+sectors:
+  communication_services:
+    name: Communication Services
+    aliases:
+      - Communications
+      - Telecom
+      - Media
+  consumer_discretionary:
+    name: Consumer Discretionary
+    aliases:
+      - Discretionary
+      - Consumer Cyclical
+  consumer_staples:
+    name: Consumer Staples
+    aliases:
+      - Staples
+      - Consumer Defensive
+  energy:
+    name: Energy
+    aliases:
+      - Oil & Gas
+  financials:
+    name: Financials
+    aliases:
+      - Financial Services
+      - Banks
+  health_care:
+    name: Health Care
+    aliases:
+      - Healthcare
+      - Pharma
+      - Biotechnology
+  industrials:
+    name: Industrials
+    aliases:
+      - Industrial
+  information_technology:
+    name: Information Technology
+    aliases:
+      - Technology
+      - Tech
+      - Software
+      - Semiconductors
+  materials:
+    name: Materials
+    aliases:
+      - Basic Materials
+  real_estate:
+    name: Real Estate
+    aliases:
+      - REITs
+      - Property
+  utilities:
+    name: Utilities
+    aliases:
+      - Utility
+
+ticker_overrides: {}
