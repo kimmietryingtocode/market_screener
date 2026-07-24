@@ -1,0 +1,51 @@
+# Weekly Yahoo Finance screening pipeline configuration.
+#
+# The pipeline narrows the market in three passes:
+#   sectors -> industries -> companies
+# and ends with a FactSet lookup list. Everything downstream of FactSet
+# (fundamental scoring, backtesting) is out of scope for this pipeline.
+
+universe:
+  benchmark: SPY          # relative strength is measured against this
+  history_period: 1y      # price history window for all momentum math
+
+# SPDR sector ETF -> Yahoo Finance sector key.
+# The ETF supplies price history; the key unlocks the industry drill-down.
+sectors:
+  XLK:  {key: technology,             name: Technology}
+  XLV:  {key: healthcare,             name: Healthcare}
+  XLF:  {key: financial-services,     name: Financial Services}
+  XLY:  {key: consumer-cyclical,      name: Consumer Cyclical}
+  XLP:  {key: consumer-defensive,     name: Consumer Defensive}
+  XLE:  {key: energy,                 name: Energy}
+  XLI:  {key: industrials,            name: Industrials}
+  XLB:  {key: basic-materials,        name: Basic Materials}
+  XLRE: {key: real-estate,            name: Real Estate}
+  XLU:  {key: utilities,              name: Utilities}
+  XLC:  {key: communication-services, name: Communication Services}
+
+# Composite score weights. Each metric is converted to a cross-sectional
+# percentile rank (0-100) first, so weights just need to sum to 1.
+score_weights:
+  rs_3m: 0.40             # 3-month return minus benchmark (relative strength)
+  return_6m: 0.30         # medium-term trend
+  return_1m: 0.20         # short-term momentum
+  low_volatility: 0.10    # rank of -volatility_3m (calmer is better)
+
+sector_scan:
+  top_n: 3                # sectors that advance to the industry scan
+
+industry_scan:
+  top_n_per_sector: 3     # industries per sector that advance
+  min_market_weight: 0.02 # skip industries under 2% of their sector
+
+company_scan:
+  candidates_per_table: 10   # rows taken from each Yahoo leader table
+  top_n_per_industry: 5      # companies per industry in the final list
+  filters:
+    min_price: 5.0
+    min_market_cap_usd: 1000000000
+    min_avg_daily_dollar_volume: 5000000
+
+output:
+  directory: data/screener   # relative to the repo root; a dated subfolder is created per run

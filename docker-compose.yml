@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: portfolio
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./api/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    ports:
+      - "6379:6379"
+
+  quant:
+    build: ./quant
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    ports:
+      - "8000:8000"
+
+  api:
+    build: ./api
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/portfolio?sslmode=disable
+      JWT_SECRET: dev-secret-change-me
+      QUANT_SERVICE_URL: http://quant:8000
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      quant:
+        condition: service_started
+
+volumes:
+  pgdata:
