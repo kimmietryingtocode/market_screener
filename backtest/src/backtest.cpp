@@ -16,9 +16,6 @@
 namespace backtest {
 namespace {
 
-constexpr int kOneMonth = 21;
-constexpr int kThreeMonths = 63;
-constexpr int kSixMonths = 126;
 constexpr double kTradingDaysPerYear = 252.0;
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
@@ -95,228 +92,6 @@ std::size_t require_column(
     return found->second;
 }
 
-std::string industry_key(const std::string& sector, const std::string& industry) {
-    return sector + "\x1f" + industry;
-}
-
-std::optional<double> trailing_return(
-    const std::vector<double>& prices, std::size_t end, int days) {
-    if (end < static_cast<std::size_t>(days)) {
-        return std::nullopt;
-    }
-    const double current = prices[end];
-    const double previous = prices[end - static_cast<std::size_t>(days)];
-    if (!finite(current) || !finite(previous) || previous <= 0.0) {
-        return std::nullopt;
-    }
-    return current / previous - 1.0;
-}
-
-std::optional<double> annualized_volatility(
-    const std::vector<double>& prices, std::size_t end, int days) {
-    if (end < static_cast<std::size_t>(days)) {
-        return std::nullopt;
-    }
-    std::vector<double> returns;
-    returns.reserve(static_cast<std::size_t>(days));
-    for (std::size_t index = end - static_cast<std::size_t>(days) + 1;
-         index <= end;
-         ++index) {
-        if (!finite(prices[index]) || !finite(prices[index - 1]) || prices[index - 1] <= 0.0) {
-            return std::nullopt;
-        }
-        returns.push_back(prices[index] / prices[index - 1] - 1.0);
-    }
-    if (returns.size() < 2) {
-        return std::nullopt;
-    }
-    const double mean =
-        std::accumulate(returns.begin(), returns.end(), 0.0) / returns.size();
-    double squared = 0.0;
-    for (const double value : returns) {
-        squared += (value - mean) * (value - mean);
-    }
-    return std::sqrt(squared / (returns.size() - 1)) * std::sqrt(kTradingDaysPerYear);
-}
-
-std::optional<double> recent_drawdown(
-    const std::vector<double>& prices, std::size_t end, int days) {
-    if (end + 1 < static_cast<std::size_t>(days)) {
-        return std::nullopt;
-    }
-    double peak = -std::numeric_limits<double>::infinity();
-    double drawdown = 0.0;
-    const std::size_t start = end + 1 - static_cast<std::size_t>(days);
-    for (std::size_t index = start; index <= end; ++index) {
-        if (!finite(prices[index]) || prices[index] <= 0.0) {
-            return std::nullopt;
-        }
-        peak = std::max(peak, prices[index]);
-        drawdown = std::min(drawdown, prices[index] / peak - 1.0);
-    }
-    return drawdown;
-}
-
-std::optional<MomentumMetrics> momentum_metrics(
-    const std::vector<double>& prices,
-    const std::vector<double>& benchmark,
-    std::size_t end) {
-    const auto one_month = trailing_return(prices, end, kOneMonth);
-    const auto three_months = trailing_return(prices, end, kThreeMonths);
-    const auto six_months = trailing_return(prices, end, kSixMonths);
-    const auto benchmark_three_months = trailing_return(benchmark, end, kThreeMonths);
-    const auto volatility = annualized_volatility(prices, end, kThreeMonths);
-    const auto drawdown = recent_drawdown(prices, end, kThreeMonths);
-    if (!one_month || !three_months || !six_months || !benchmark_three_months ||
-        !volatility || !drawdown) {
-        return std::nullopt;
-    }
-    return MomentumMetrics{
-        *one_month,
-        *three_months,
-        *six_months,
-        *three_months - *benchmark_three_months,
-        *volatility,
-        *drawdown,
-    };
-}
-
-bool above_moving_average(
-    const std::vector<double>& prices, std::size_t end, int days) {
-    if (days <= 0) {
-        return true;
-    }
-    if (end + 1 < static_cast<std::size_t>(days) || !finite(prices[end])) {
-        return false;
-    }
-    double total = 0.0;
-    for (std::size_t index = end + 1 - static_cast<std::size_t>(days);
-         index <= end;
-         ++index) {
-        if (!finite(prices[index])) {
-            return false;
-        }
-        total += prices[index];
-    }
-    return prices[end] >= total / static_cast<double>(days);
-}
-
-struct ScoredAsset {
-    std::string key;
-    MomentumMetrics metrics;
-    double score{};
-};
-
-std::vector<double> percentile_ranks(const std::vector<double>& values) {
-    std::vector<std::size_t> order(values.size());
-    std::iota(order.begin(), order.end(), 0);
-    std::stable_sort(order.begin(), order.end(), [&](std::size_t lhs, std::size_t rhs) {
-        return values[lhs] < values[rhs];
-    });
-
-    std::vector<double> ranks(values.size());
-    std::size_t start = 0;
-    while (start < order.size()) {
-        std::size_t end = start;
-        while (end + 1 < order.size() &&
-               std::abs(values[order[end + 1]] - values[order[start]]) < 1e-12) {
-            ++end;
-        }
-        const double average_rank =
-            (static_cast<double>(start + 1) + static_cast<double>(end + 1)) / 2.0;
-        for (std::size_t position = start; position <= end; ++position) {
-            ranks[order[position]] = average_rank / static_cast<double>(values.size());
-        }
-        start = end + 1;
-    }
-    return ranks;
-}
-
-std::vector<ScoredAsset> score_assets(
-    const std::vector<std::pair<std::string, MomentumMetrics>>& assets) {
-    if (assets.empty()) {
-        return {};
-    }
-    std::vector<double> relative_strength;
-    std::vector<double> six_months;
-    std::vector<double> one_month;
-    std::vector<double> inverse_volatility;
-    for (const auto& [key, metrics] : assets) {
-        (void)key;
-        relative_strength.push_back(metrics.relative_strength_3m);
-        six_months.push_back(metrics.return_6m);
-        one_month.push_back(metrics.return_1m);
-        inverse_volatility.push_back(-metrics.volatility_3m);
-    }
-    const auto rs_rank = percentile_ranks(relative_strength);
-    const auto six_rank = percentile_ranks(six_months);
-    const auto one_rank = percentile_ranks(one_month);
-    const auto volatility_rank = percentile_ranks(inverse_volatility);
-
-    std::vector<ScoredAsset> scored;
-    for (std::size_t index = 0; index < assets.size(); ++index) {
-        scored.push_back(ScoredAsset{
-            assets[index].first,
-            assets[index].second,
-            100.0 * (0.40 * rs_rank[index] + 0.30 * six_rank[index] +
-                     0.20 * one_rank[index] + 0.10 * volatility_rank[index]),
-        });
-    }
-    std::sort(scored.begin(), scored.end(), [](const ScoredAsset& lhs, const ScoredAsset& rhs) {
-        if (std::abs(lhs.score - rhs.score) > 1e-12) {
-            return lhs.score > rhs.score;
-        }
-        return lhs.key < rhs.key;
-    });
-    return scored;
-}
-
-std::vector<double> build_equal_weight_index(
-    const std::vector<std::string>& tickers,
-    const PriceTable& prices) {
-    std::vector<double> index(prices.dates.size(), kNaN);
-    if (tickers.empty() || prices.dates.empty()) {
-        return index;
-    }
-
-    std::size_t first = prices.dates.size();
-    for (std::size_t date_index = 0; date_index < prices.dates.size(); ++date_index) {
-        for (const auto& ticker : tickers) {
-            if (finite(prices.series(ticker)[date_index])) {
-                first = date_index;
-                break;
-            }
-        }
-        if (first != prices.dates.size()) {
-            break;
-        }
-    }
-    if (first == prices.dates.size()) {
-        return index;
-    }
-    index[first] = 100.0;
-    for (std::size_t date_index = first + 1; date_index < prices.dates.size(); ++date_index) {
-        std::vector<double> returns;
-        for (const auto& ticker : tickers) {
-            const auto& series = prices.series(ticker);
-            if (finite(series[date_index]) && finite(series[date_index - 1]) &&
-                series[date_index - 1] > 0.0) {
-                returns.push_back(series[date_index] / series[date_index - 1] - 1.0);
-            }
-        }
-        if (returns.empty()) {
-            index[date_index] = index[date_index - 1];
-        } else {
-            const double average =
-                std::accumulate(returns.begin(), returns.end(), 0.0) / returns.size();
-            index[date_index] = index[date_index - 1] * (1.0 + average);
-        }
-    }
-    return index;
-}
-
-int month_number(const Date& date) { return date.year * 12 + date.month - 1; }
-
 double portfolio_value(
     double cash,
     const std::map<std::string, double>& shares,
@@ -347,27 +122,31 @@ double sample_standard_deviation(const std::vector<double>& values) {
 
 Performance calculate_performance(
     const std::vector<Date>& dates,
-    const std::vector<double>& values) {
-    if (dates.size() != values.size() || dates.size() < 2 || values.front() <= 0.0) {
+    const std::vector<double>& values,
+    double initial_value) {
+    if (dates.size() != values.size() || dates.size() < 2 || initial_value <= 0.0) {
         throw std::runtime_error("insufficient observations for performance statistics");
     }
     Performance result;
     result.ending_value = values.back();
-    result.total_return = values.back() / values.front() - 1.0;
+    result.total_return = values.back() / initial_value - 1.0;
     const double years =
         static_cast<double>(dates.back().serial() - dates.front().serial()) / 365.25;
     result.cagr = years > 0.0 && values.back() > 0.0
-                      ? std::pow(values.back() / values.front(), 1.0 / years) - 1.0
-                      : 0.0;
+                      ? std::pow(values.back() / initial_value, 1.0 / years) - 1.0
+                      : kNaN;
 
     std::vector<double> daily_returns;
-    daily_returns.reserve(values.size() - 1);
-    double peak = values.front();
-    for (std::size_t index = 1; index < values.size(); ++index) {
-        daily_returns.push_back(values[index] / values[index - 1] - 1.0);
+    daily_returns.reserve(values.size());
+    daily_returns.push_back(values.front() / initial_value - 1.0);
+    double peak = initial_value;
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        if (index > 0) {
+            daily_returns.push_back(values[index] / values[index - 1] - 1.0);
+        }
         peak = std::max(peak, values[index]);
-        result.maximum_drawdown =
-            std::min(result.maximum_drawdown, values[index] / peak - 1.0);
+        const double drawdown = values[index] / peak - 1.0;
+        result.maximum_drawdown = std::min(result.maximum_drawdown, drawdown);
     }
     const double daily_mean =
         std::accumulate(daily_returns.begin(), daily_returns.end(), 0.0) /
@@ -376,18 +155,7 @@ Performance calculate_performance(
     result.annualized_volatility = daily_volatility * std::sqrt(kTradingDaysPerYear);
     result.sharpe_ratio = daily_volatility > 0.0
                               ? daily_mean / daily_volatility * std::sqrt(kTradingDaysPerYear)
-                              : 0.0;
-
-    double downside_square_sum = 0.0;
-    for (const double value : daily_returns) {
-        const double downside = std::min(0.0, value);
-        downside_square_sum += downside * downside;
-    }
-    const double downside_deviation =
-        std::sqrt(downside_square_sum / daily_returns.size());
-    result.sortino_ratio = downside_deviation > 0.0
-                               ? daily_mean / downside_deviation * std::sqrt(kTradingDaysPerYear)
-                               : 0.0;
+                              : kNaN;
     return result;
 }
 
@@ -487,20 +255,16 @@ PriceTable PriceTable::load_csv(const std::string& path, const std::string& benc
         (void)price;
         result.dates.push_back(date);
     }
-    if (result.dates.size() < static_cast<std::size_t>(kSixMonths + 2)) {
-        throw std::runtime_error("benchmark has insufficient price history");
+    if (result.dates.size() < 2) {
+        throw std::runtime_error("benchmark requires at least two price observations");
     }
 
     for (const auto& [ticker, observations] : raw) {
         std::vector<double> aligned(result.dates.size(), kNaN);
-        double last = kNaN;
         for (std::size_t index = 0; index < result.dates.size(); ++index) {
             const auto found = observations.find(result.dates[index]);
             if (found != observations.end()) {
-                last = found->second;
-            }
-            if (finite(last)) {
-                aligned[index] = last;
+                aligned[index] = found->second;
             }
         }
         result.adjusted_close.emplace(ticker, std::move(aligned));
@@ -516,24 +280,23 @@ const std::vector<double>& PriceTable::series(const std::string& ticker) const {
     return found->second;
 }
 
-std::vector<Security> load_universe_csv(const std::string& path) {
+std::vector<TargetWeight> load_target_schedule_csv(const std::string& path) {
     std::ifstream input(path);
     if (!input) {
-        throw std::runtime_error("cannot open universe file: " + path);
+        throw std::runtime_error("cannot open target schedule: " + path);
     }
     std::string line;
     if (!std::getline(input, line)) {
-        throw std::runtime_error("universe file is empty: " + path);
+        throw std::runtime_error("target schedule is empty: " + path);
     }
     const auto columns = header_map(parse_csv_line(line));
-    const auto ticker = require_column(columns, "ticker", path);
-    const auto company = require_column(columns, "company", path);
-    const auto sector = require_column(columns, "sector", path);
-    const auto industry = require_column(columns, "industry", path);
-    const auto sector_etf = require_column(columns, "sector_etf", path);
+    const auto signal_at = require_column(columns, "signal_at", path);
+    const auto execution_date = require_column(columns, "execution_date", path);
+    const auto security_id = require_column(columns, "security_id", path);
+    const auto target_weight = require_column(columns, "target_weight", path);
+    const auto provenance_id = require_column(columns, "provenance_id", path);
 
-    std::vector<Security> result;
-    std::set<std::string> seen;
+    std::vector<TargetWeight> result;
     std::size_t row_number = 1;
     while (std::getline(input, line)) {
         ++row_number;
@@ -542,215 +305,105 @@ std::vector<Security> load_universe_csv(const std::string& path) {
         }
         const auto fields = parse_csv_line(line);
         const std::size_t required =
-            std::max({ticker, company, sector, industry, sector_etf});
+            std::max({signal_at, execution_date, security_id, target_weight, provenance_id});
         if (fields.size() <= required) {
             throw std::runtime_error(path + ": short row " + std::to_string(row_number));
         }
-        Security security{fields[ticker], fields[company], fields[sector], fields[industry],
-                          fields[sector_etf]};
-        if (security.ticker.empty() || security.sector.empty() || security.industry.empty() ||
-            security.sector_etf.empty()) {
-            throw std::runtime_error(path + ": blank required value on row " +
+        TargetWeight row{fields[signal_at],
+                         Date::parse(fields[execution_date]),
+                         fields[security_id],
+                         std::stod(fields[target_weight]),
+                         fields[provenance_id]};
+        if (row.signal_at.size() < 10 || row.target_weight < 0.0 || row.target_weight > 1.0) {
+            throw std::runtime_error(path + ": invalid target row " +
                                      std::to_string(row_number));
         }
-        if (!seen.insert(security.ticker).second) {
-            throw std::runtime_error(path + ": duplicate ticker " + security.ticker);
-        }
-        result.push_back(std::move(security));
+        result.push_back(std::move(row));
     }
-    if (result.empty()) {
-        throw std::runtime_error("universe contains no securities");
-    }
+    std::sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs) {
+        return std::tie(lhs.execution_date, lhs.signal_at, lhs.security_id) <
+               std::tie(rhs.execution_date, rhs.signal_at, rhs.security_id);
+    });
     return result;
 }
 
-Engine::Engine(PriceTable prices, std::vector<Security> universe, Config config)
-    : prices_(std::move(prices)), universe_(std::move(universe)), config_(std::move(config)) {
-    (void)prices_.series(config_.benchmark);
-    std::map<std::string, std::vector<std::string>> groups;
-    std::map<std::string, std::string> sector_etfs;
-    for (const auto& security : universe_) {
-        (void)prices_.series(security.ticker);
-        (void)prices_.series(security.sector_etf);
-        groups[industry_key(security.sector, security.industry)].push_back(security.ticker);
-        const auto [position, inserted] =
-            sector_etfs.emplace(security.sector, security.sector_etf);
-        if (!inserted && position->second != security.sector_etf) {
-            throw std::runtime_error("sector maps to multiple ETFs: " + security.sector);
-        }
+Result run_target_schedule(
+    const PriceTable& prices,
+    const std::vector<TargetWeight>& targets,
+    const Config& config) {
+    if (targets.empty()) {
+        throw std::runtime_error("target schedule contains no rebalances");
     }
-    for (const auto& [key, tickers] : groups) {
-        industry_indexes_[key] = build_equal_weight_index(tickers, prices_);
-    }
-}
-
-std::vector<Selection> Engine::select_portfolio(std::size_t signal_index) const {
-    const auto& benchmark = prices_.series(config_.benchmark);
-    std::map<std::string, std::string> sector_etfs;
-    for (const auto& security : universe_) {
-        sector_etfs.emplace(security.sector, security.sector_etf);
-    }
-
-    std::vector<std::pair<std::string, MomentumMetrics>> sector_metrics;
-    for (const auto& [sector, etf] : sector_etfs) {
-        const auto metrics = momentum_metrics(prices_.series(etf), benchmark, signal_index);
-        if (metrics) {
-            sector_metrics.emplace_back(sector, *metrics);
-        }
-    }
-    auto scored_sectors = score_assets(sector_metrics);
-    if (scored_sectors.size() > static_cast<std::size_t>(config_.top_sectors)) {
-        scored_sectors.resize(static_cast<std::size_t>(config_.top_sectors));
-    }
-    if (scored_sectors.empty()) {
-        return {};
-    }
-
-    std::vector<Selection> selections;
-    const double sector_budget = std::min(
-        1.0 / static_cast<double>(scored_sectors.size()), config_.maximum_sector_weight);
-    for (const auto& scored_sector : scored_sectors) {
-        const std::string& sector = scored_sector.key;
-        const std::string& sector_etf = sector_etfs.at(sector);
-        std::set<std::string> industries;
-        for (const auto& security : universe_) {
-            if (security.sector == sector) {
-                industries.insert(security.industry);
-            }
-        }
-
-        std::vector<std::pair<std::string, MomentumMetrics>> industry_metrics;
-        for (const auto& industry : industries) {
-            const auto& index = industry_indexes_.at(industry_key(sector, industry));
-            const auto metrics =
-                momentum_metrics(index, prices_.series(sector_etf), signal_index);
-            if (metrics) {
-                industry_metrics.emplace_back(industry, *metrics);
-            }
-        }
-        auto scored_industries = score_assets(industry_metrics);
-        if (scored_industries.size() >
-            static_cast<std::size_t>(config_.top_industries_per_sector)) {
-            scored_industries.resize(
-                static_cast<std::size_t>(config_.top_industries_per_sector));
-        }
-        if (scored_industries.empty()) {
-            continue;
-        }
-        const double industry_budget =
-            sector_budget / static_cast<double>(scored_industries.size());
-
-        for (const auto& scored_industry : scored_industries) {
-            std::vector<std::pair<std::string, MomentumMetrics>> company_metrics;
-            std::map<std::string, const Security*> security_by_ticker;
-            for (const auto& security : universe_) {
-                if (security.sector != sector || security.industry != scored_industry.key) {
-                    continue;
-                }
-                const auto& company_prices = prices_.series(security.ticker);
-                const auto metrics = momentum_metrics(company_prices, benchmark, signal_index);
-                if (metrics &&
-                    above_moving_average(company_prices, signal_index, config_.trend_days)) {
-                    company_metrics.emplace_back(security.ticker, *metrics);
-                    security_by_ticker.emplace(security.ticker, &security);
-                }
-            }
-            auto scored_companies = score_assets(company_metrics);
-            if (scored_companies.size() >
-                static_cast<std::size_t>(config_.top_companies_per_industry)) {
-                scored_companies.resize(
-                    static_cast<std::size_t>(config_.top_companies_per_industry));
-            }
-            if (scored_companies.empty()) {
-                continue;
-            }
-
-            double weight_denominator = static_cast<double>(scored_companies.size());
-            if (config_.inverse_volatility_weights) {
-                weight_denominator = 0.0;
-                for (const auto& company : scored_companies) {
-                    weight_denominator += 1.0 / std::max(company.metrics.volatility_3m, 1e-9);
-                }
-            }
-            for (const auto& company : scored_companies) {
-                const double raw_share = config_.inverse_volatility_weights
-                                             ? (1.0 / std::max(
-                                                    company.metrics.volatility_3m, 1e-9)) /
-                                                   weight_denominator
-                                             : 1.0 / weight_denominator;
-                const double target_weight = std::min(
-                    industry_budget * raw_share, config_.maximum_position_weight);
-                const Security& security = *security_by_ticker.at(company.key);
-                selections.push_back(Selection{
-                    prices_.dates[signal_index],
-                    prices_.dates[signal_index],
-                    security.ticker,
-                    security.company,
-                    security.sector,
-                    security.industry,
-                    scored_sector.score,
-                    scored_industry.score,
-                    company.score,
-                    company.metrics.volatility_3m,
-                    target_weight,
-                });
-            }
-        }
-    }
-    return selections;
-}
-
-Result Engine::run() const {
-    const std::size_t warmup = static_cast<std::size_t>(
-        std::max(kSixMonths, std::max(0, config_.trend_days - 1)));
-    std::size_t start_index = warmup;
-    if (config_.start_date) {
-        const auto found = std::lower_bound(
-            prices_.dates.begin(), prices_.dates.end(), *config_.start_date);
-        if (found == prices_.dates.end()) {
+    std::size_t start_index = 0;
+    if (config.start_date) {
+        const auto found = std::lower_bound(prices.dates.begin(), prices.dates.end(), *config.start_date);
+        if (found == prices.dates.end()) {
             throw std::runtime_error("start date is after available price history");
         }
-        start_index = std::max(start_index,
-                               static_cast<std::size_t>(found - prices_.dates.begin()));
+        start_index = static_cast<std::size_t>(found - prices.dates.begin());
     }
-    std::size_t end_index = prices_.dates.size() - 1;
-    if (config_.end_date) {
-        const auto found = std::upper_bound(
-            prices_.dates.begin(), prices_.dates.end(), *config_.end_date);
-        if (found == prices_.dates.begin()) {
+    std::size_t end_index = prices.dates.size() - 1;
+    if (config.end_date) {
+        const auto found = std::upper_bound(prices.dates.begin(), prices.dates.end(), *config.end_date);
+        if (found == prices.dates.begin()) {
             throw std::runtime_error("end date is before available price history");
         }
-        end_index = static_cast<std::size_t>((found - prices_.dates.begin()) - 1);
+        end_index = static_cast<std::size_t>((found - prices.dates.begin()) - 1);
     }
-    if (start_index + 2 > end_index) {
-        throw std::runtime_error("backtest window is too short after lookback warm-up");
+    if (start_index + 1 > end_index) {
+        throw std::runtime_error("target-schedule window is too short");
+    }
+
+    std::map<Date, std::vector<TargetWeight>> targets_by_date;
+    for (const auto& target : targets) {
+        if (target.execution_date < prices.dates[start_index] ||
+            prices.dates[end_index] < target.execution_date) {
+            continue;
+        }
+        targets_by_date[target.execution_date].push_back(target);
+        if (!target.security_id.empty()) {
+            (void)prices.series(target.security_id);
+        }
     }
 
     Result result;
-    result.config = config_;
-    result.start_date = prices_.dates[start_index];
-    result.end_date = prices_.dates[end_index];
-    double cash = config_.initial_capital;
+    result.config = config;
+    result.start_date = prices.dates[start_index];
+    result.end_date = prices.dates[end_index];
+    double cash = config.initial_capital;
     std::map<std::string, double> shares;
-    std::optional<std::vector<Selection>> pending;
-    std::size_t pending_execution_index = 0;
-    int next_signal_month = month_number(prices_.dates[start_index]);
-    bool first_signal = true;
-    double running_peak = config_.initial_capital;
-    double previous_value = config_.initial_capital;
-    const auto& benchmark = prices_.series(config_.benchmark);
+    double running_peak = config.initial_capital;
+    double previous_value = config.initial_capital;
+    bool has_invested = false;
+    const auto& benchmark = prices.series(config.benchmark);
     const double benchmark_start = benchmark[start_index];
     if (!finite(benchmark_start) || benchmark_start <= 0.0) {
         throw std::runtime_error("benchmark is missing at performance start");
     }
 
     for (std::size_t date_index = start_index; date_index <= end_index; ++date_index) {
-        if (pending && date_index == pending_execution_index) {
-            const double equity_before =
-                portfolio_value(cash, shares, prices_, date_index);
+        const double pre_trade_value = portfolio_value(cash, shares, prices, date_index);
+        double session_traded_notional = 0.0;
+        double session_transaction_cost = 0.0;
+        const auto found_targets = targets_by_date.find(prices.dates[date_index]);
+        if (found_targets != targets_by_date.end()) {
+            const double equity_before = pre_trade_value;
             std::map<std::string, double> target_weights;
-            for (const auto& selection : *pending) {
-                target_weights[selection.ticker] = selection.target_weight;
+            double total_weight = 0.0;
+            for (const auto& target : found_targets->second) {
+                result.executed_targets.push_back(target);
+                if (target.security_id.empty()) {
+                    continue;
+                }
+                if (!target_weights.emplace(target.security_id, target.target_weight).second) {
+                    throw std::runtime_error("duplicate target for " + target.security_id +
+                                             " on " + target.execution_date.str());
+                }
+                total_weight += target.target_weight;
+            }
+            if (total_weight > 1.0 + 1e-10) {
+                throw std::runtime_error("target weights exceed 100% on " +
+                                         prices.dates[date_index].str());
             }
 
             std::set<std::string> traded_tickers;
@@ -763,25 +416,35 @@ Result Engine::run() const {
                 traded_tickers.insert(ticker);
             }
 
-            const double cost_rate = config_.transaction_cost_bps / 10000.0;
+            const double cost_rate = config.transaction_cost_bps / 10000.0;
             double investable = equity_before;
             double traded_notional = 0.0;
-            for (int iteration = 0; iteration < 5; ++iteration) {
+            for (int iteration = 0; iteration < 100; ++iteration) {
                 traded_notional = 0.0;
                 for (const auto& ticker : traded_tickers) {
-                    const double price = prices_.series(ticker)[date_index];
+                    const double price = prices.series(ticker)[date_index];
+                    if (!finite(price) || price <= 0.0) {
+                        throw std::runtime_error("missing execution price for " + ticker);
+                    }
                     const double current = shares[ticker] * price;
                     const double target = investable * target_weights[ticker];
                     traded_notional += std::abs(target - current);
                 }
-                investable = std::max(0.0, equity_before - traded_notional * cost_rate);
+                const double next = std::max(0.0, equity_before - traded_notional * cost_rate);
+                if (std::abs(next - investable) <=
+                    std::max(1.0, equity_before) * 1e-14) {
+                    investable = next;
+                    break;
+                }
+                investable = next;
             }
 
             std::map<std::string, double> new_shares;
             double target_invested = 0.0;
             double total_cost = 0.0;
+            double actual_traded_notional = 0.0;
             for (const auto& ticker : traded_tickers) {
-                const double price = prices_.series(ticker)[date_index];
+                const double price = prices.series(ticker)[date_index];
                 const double current_quantity = shares[ticker];
                 const double target_value = investable * target_weights[ticker];
                 const double target_quantity = target_value / price;
@@ -790,7 +453,7 @@ Result Engine::run() const {
                 if (notional > 1e-8) {
                     const double trade_cost = notional * cost_rate;
                     result.trades.push_back(Trade{
-                        prices_.dates[date_index],
+                        prices.dates[date_index],
                         ticker,
                         quantity_change > 0.0 ? "BUY" : "SELL",
                         std::abs(quantity_change),
@@ -799,6 +462,7 @@ Result Engine::run() const {
                         trade_cost,
                     });
                     total_cost += trade_cost;
+                    actual_traded_notional += notional;
                 }
                 if (target_quantity > 1e-12) {
                     new_shares[ticker] = target_quantity;
@@ -806,41 +470,51 @@ Result Engine::run() const {
                 }
             }
             result.total_turnover +=
-                equity_before > 0.0 ? traded_notional / equity_before : 0.0;
+                equity_before > 0.0 ? actual_traded_notional / equity_before : 0.0;
             result.total_transaction_costs += total_cost;
             cash = equity_before - target_invested - total_cost;
+            if (cash < -1e-6) {
+                throw std::runtime_error("rebalance produced negative cash on " +
+                                         prices.dates[date_index].str());
+            }
+            if (cash < 0.0) cash = 0.0;
             shares = std::move(new_shares);
+            session_traded_notional = actual_traded_notional;
+            session_transaction_cost = total_cost;
             ++result.rebalance_count;
-            pending.reset();
         }
 
-        const double value = portfolio_value(cash, shares, prices_, date_index);
-        const double daily_return =
-            result.equity_curve.empty() ? 0.0 : value / previous_value - 1.0;
+        const double value = portfolio_value(cash, shares, prices, date_index);
+        const double daily_return = value / previous_value - 1.0;
         running_peak = std::max(running_peak, value);
         result.equity_curve.push_back(EquityPoint{
-            prices_.dates[date_index],
+            prices.dates[date_index],
             value,
             daily_return,
-            config_.initial_capital * benchmark[date_index] / benchmark_start,
+            config.initial_capital * benchmark[date_index] / benchmark_start,
             value / running_peak - 1.0,
             value > 0.0 ? cash / value : 0.0,
         });
-        previous_value = value;
-
-        const int current_month = month_number(prices_.dates[date_index]);
-        if (date_index < end_index && !pending &&
-            (first_signal || current_month >= next_signal_month)) {
-            auto selections = select_portfolio(date_index);
-            for (auto& selection : selections) {
-                selection.execution_date = prices_.dates[date_index + 1];
-                result.selections.push_back(selection);
-            }
-            pending = std::move(selections);
-            pending_execution_index = date_index + 1;
-            first_signal = false;
-            next_signal_month = current_month + config_.rebalance_months;
+        double invested_value = 0.0;
+        for (const auto& [ticker, units] : shares) {
+            const double price = prices.series(ticker)[date_index];
+            const double market_value = units * price;
+            invested_value += market_value;
+            result.holdings.push_back(HoldingPoint{
+                prices.dates[date_index], ticker, units, price, market_value,
+                value > 0.0 ? market_value / value : 0.0,
+            });
         }
+        result.account_ledger.push_back(AccountPoint{
+            prices.dates[date_index], pre_trade_value, cash, invested_value,
+            session_traded_notional, session_transaction_cost, value,
+        });
+        if (!has_invested && shares.empty()) {
+            ++result.initial_waiting_sessions;
+        } else if (!shares.empty()) {
+            has_invested = true;
+        }
+        previous_value = value;
     }
 
     std::vector<Date> dates;
@@ -851,8 +525,12 @@ Result Engine::run() const {
         portfolio_values.push_back(point.portfolio_value);
         benchmark_values.push_back(point.benchmark_value);
     }
-    result.portfolio = calculate_performance(dates, portfolio_values);
-    result.benchmark = calculate_performance(dates, benchmark_values);
+    result.portfolio = calculate_performance(dates, portfolio_values, config.initial_capital);
+    result.benchmark = calculate_performance(dates, benchmark_values, config.initial_capital);
+    result.average_cash_weight = std::accumulate(
+        result.equity_curve.begin(), result.equity_curve.end(), 0.0,
+        [](double total, const EquityPoint& point) { return total + point.cash_weight; }) /
+        static_cast<double>(result.equity_curve.size());
     return result;
 }
 
@@ -862,37 +540,49 @@ void write_outputs(const Result& result, const std::string& output_directory) {
 
     std::ofstream equity(fs::path(output_directory) / "equity_curve.csv");
     equity << "date,portfolio_value,daily_return,benchmark_value,drawdown,cash_weight\n";
-    equity << std::setprecision(12);
+    equity << std::setprecision(17);
     for (const auto& point : result.equity_curve) {
         equity << point.date.str() << ',' << point.portfolio_value << ',' << point.daily_return
                << ',' << point.benchmark_value << ',' << point.drawdown << ','
                << point.cash_weight << '\n';
     }
 
+    std::ofstream ledger(fs::path(output_directory) / "account_ledger.csv");
+    ledger << "date,pre_trade_value,cash,invested_value,traded_notional,transaction_cost,portfolio_value\n";
+    ledger << std::setprecision(17);
+    for (const auto& point : result.account_ledger) {
+        ledger << point.date.str() << ',' << point.pre_trade_value << ',' << point.cash << ','
+               << point.invested_value << ',' << point.traded_notional << ','
+               << point.transaction_cost << ',' << point.portfolio_value << '\n';
+    }
+
+    std::ofstream holdings(fs::path(output_directory) / "holdings.csv");
+    holdings << "date,ticker,units,price,market_value,weight\n" << std::setprecision(17);
+    for (const auto& point : result.holdings) {
+        holdings << point.date.str() << ',' << csv_escape(point.ticker) << ',' << point.units
+                 << ',' << point.price << ',' << point.market_value << ',' << point.weight << '\n';
+    }
+
     std::ofstream trades(fs::path(output_directory) / "trades.csv");
-    trades << "date,ticker,action,shares,price,notional,transaction_cost\n";
-    trades << std::setprecision(12);
+    trades << "date,ticker,action,units,price,notional,transaction_cost\n";
+    trades << std::setprecision(17);
     for (const auto& trade : result.trades) {
         trades << trade.date.str() << ',' << csv_escape(trade.ticker) << ',' << trade.action << ','
-               << trade.shares << ',' << trade.price << ',' << trade.notional << ','
+               << trade.units << ',' << trade.price << ',' << trade.notional << ','
                << trade.transaction_cost << '\n';
     }
 
     std::ofstream selections(fs::path(output_directory) / "rebalance_log.csv");
-    selections << "signal_date,execution_date,ticker,company,sector,industry,sector_score,"
-                  "industry_score,company_score,volatility_3m,target_weight\n";
-    selections << std::setprecision(12);
-    for (const auto& selection : result.selections) {
-        selections << selection.signal_date.str() << ',' << selection.execution_date.str() << ','
-                   << csv_escape(selection.ticker) << ',' << csv_escape(selection.company) << ','
-                   << csv_escape(selection.sector) << ',' << csv_escape(selection.industry) << ','
-                   << selection.sector_score << ',' << selection.industry_score << ','
-                   << selection.company_score << ',' << selection.volatility_3m << ','
-                   << selection.target_weight << '\n';
+    selections << "signal_at,execution_date,security_id,target_weight,provenance_id\n";
+    selections << std::setprecision(17);
+    for (const auto& target : result.executed_targets) {
+        selections << csv_escape(target.signal_at) << ',' << target.execution_date.str() << ','
+                   << csv_escape(target.security_id) << ',' << target.target_weight << ','
+                   << csv_escape(target.provenance_id) << '\n';
     }
 
     std::ofstream summary(fs::path(output_directory) / "summary.csv");
-    summary << "metric,portfolio,benchmark\n" << std::setprecision(12);
+    summary << "metric,portfolio,benchmark\n" << std::setprecision(17);
     summary << "ending_value," << result.portfolio.ending_value << ','
             << result.benchmark.ending_value << '\n';
     summary << "total_return," << result.portfolio.total_return << ','
@@ -902,13 +592,22 @@ void write_outputs(const Result& result, const std::string& output_directory) {
             << result.benchmark.annualized_volatility << '\n';
     summary << "sharpe_ratio," << result.portfolio.sharpe_ratio << ','
             << result.benchmark.sharpe_ratio << '\n';
-    summary << "sortino_ratio," << result.portfolio.sortino_ratio << ','
-            << result.benchmark.sortino_ratio << '\n';
     summary << "maximum_drawdown," << result.portfolio.maximum_drawdown << ','
             << result.benchmark.maximum_drawdown << '\n';
     summary << "total_turnover," << result.total_turnover << ",\n";
     summary << "transaction_costs," << result.total_transaction_costs << ",\n";
     summary << "rebalance_count," << result.rebalance_count << ",\n";
+    summary << "average_cash_weight," << result.average_cash_weight << ",\n";
+    summary << "initial_waiting_sessions," << result.initial_waiting_sessions << ",\n";
+
+    std::ofstream notes(fs::path(output_directory) / "statistics_notes.csv");
+    notes << "metric,definition,undefined_when\n"
+          << "total_return,ending value divided by starting capital minus one,never for a valid run\n"
+          << "cagr,actual elapsed calendar time,nonpositive ending value or zero elapsed time\n"
+          << "annualized_volatility,sample daily standard deviation times sqrt(252),fewer than two returns\n"
+          << "sharpe_ratio,mean daily return divided by sample standard deviation times sqrt(252),zero volatility\n"
+          << "maximum_drawdown,includes starting capital,never for a valid run\n"
+          << "total_turnover,sum of absolute traded notional divided by pre-trade equity,never for a valid run\n";
 
     std::ofstream run_config(fs::path(output_directory) / "run_config.csv");
     run_config << "parameter,value\n";
@@ -916,18 +615,7 @@ void write_outputs(const Result& result, const std::string& output_directory) {
     run_config << "start_date," << result.start_date.str() << '\n';
     run_config << "end_date," << result.end_date.str() << '\n';
     run_config << "initial_capital," << result.config.initial_capital << '\n';
-    run_config << "top_sectors," << result.config.top_sectors << '\n';
-    run_config << "top_industries_per_sector," << result.config.top_industries_per_sector
-               << '\n';
-    run_config << "top_companies_per_industry," << result.config.top_companies_per_industry
-               << '\n';
-    run_config << "rebalance_months," << result.config.rebalance_months << '\n';
-    run_config << "trend_days," << result.config.trend_days << '\n';
     run_config << "transaction_cost_bps," << result.config.transaction_cost_bps << '\n';
-    run_config << "maximum_position_weight," << result.config.maximum_position_weight << '\n';
-    run_config << "maximum_sector_weight," << result.config.maximum_sector_weight << '\n';
-    run_config << "weighting,"
-               << (result.config.inverse_volatility_weights ? "inverse-vol" : "equal") << '\n';
 }
 
 }  // namespace backtest

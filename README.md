@@ -162,7 +162,15 @@ quant/                  Python service (FastAPI)
     models/             pydantic request/response schemas
 
 docker-compose.yml      wires postgres + redis + quant + api together
+backtest/               Point-in-time workflow plus C++ target-schedule simulator
+screener/               Yahoo sweep and manual FactSet Summary importer
 ```
+
+The research workflow distinguishes historical diagnostics from observed
+forward runs. SEC facts are selected by filing availability, current FactSet
+Summary exports never backfill earlier decisions, and archived runs replay from
+copied, hashed inputs. See [`backtest/README.md`](backtest/README.md) for the
+supported release scope and accuracy gates.
 
 ## Known gaps / next steps
 
