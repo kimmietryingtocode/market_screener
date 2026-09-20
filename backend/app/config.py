@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgres://postgres:postgres@localhost:5432/portfolio"
-    jwt_secret: str = "dev-secret-change-me"
+    database_url: str = "postgresql://localhost:5432/portfolio"
+    jwt_secret: str
     quant_service_url: str = "http://localhost:8000"
     jwt_ttl_hours: int = 24
 
