@@ -12,7 +12,7 @@ from pathlib import Path
 def run_engine(
     engine: Path,
     prices_path: Path,
-    universe_path: Path,
+    targets_path: Path,
     output_dir: Path,
     benchmark: str,
     start_date: str | None = None,
@@ -21,7 +21,7 @@ def run_engine(
     command = [
         str(engine),
         "--prices", str(prices_path),
-        "--universe", str(universe_path),
+        "--targets", str(targets_path),
         "--output-dir", str(output_dir),
         "--benchmark", benchmark,
     ]
@@ -48,7 +48,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
     parser.add_argument("--prices", type=Path, required=True)
-    parser.add_argument("--universe", type=Path, required=True)
+    parser.add_argument("--targets", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--benchmark", default="SPY")
     parser.add_argument("--start")
@@ -58,7 +58,7 @@ def main() -> None:
     output_dir = run_engine(
         args.engine,
         args.prices,
-        args.universe,
+        args.targets,
         args.output_dir,
         args.benchmark,
         args.start,
