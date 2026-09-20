@@ -10,7 +10,7 @@ services:
       - "15432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./api/migrations:/docker-entrypoint-initdb.d
+      - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -29,23 +29,6 @@ services:
     ports:
       - "8000:8000"
 
-  api:
-    build: ./api
-    platform: ${DOCKER_PLATFORM:-linux/arm64}
-    environment:
-      PORT: "8080"
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET}
-      QUANT_SERVICE_URL: http://quant:8000
-      REDIS_URL: redis://redis:6379
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      quant:
-        condition: service_started
-
   backend:
     build: ./backend
     platform: ${DOCKER_PLATFORM:-linux/arm64}
@@ -53,12 +36,15 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       QUANT_SERVICE_URL: http://quant:8000
+      REDIS_URL: redis://redis:6379
     ports:
       - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
       quant:
+        condition: service_started
+      redis:
         condition: service_started
 
 volumes:

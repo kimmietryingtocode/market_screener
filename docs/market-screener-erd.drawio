@@ -1,0 +1,126 @@
+<mxfile host="app.diagrams.net" modified="2026-09-17T00:00:00.000Z" agent="GitHub Copilot" version="24.7.17">
+  <diagram id="market-screener-erd" name="Market Screener ERD">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="users" value="&lt;b&gt;USERS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="240" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="users_key" value="Key" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="users">
+          <mxGeometry y="32" width="240" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="users_pk" value="PK" style="shape=partialRectangle;overflow=hidden;fillColor=#ffffff;strokeColor=none;align=left;spacingLeft=4;" vertex="1" parent="users_key"><mxGeometry width="48" height="28" as="geometry" /></mxCell>
+        <mxCell id="users_id" value="User_ID" style="shape=partialRectangle;overflow=hidden;fillColor=#ffffff;strokeColor=none;align=left;spacingLeft=4;" vertex="1" parent="users_key"><mxGeometry x="48" width="192" height="28" as="geometry" /></mxCell>
+        <mxCell id="users_email" value="UK   Email" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="users"><mxGeometry y="60" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="users_password" value="Password_Hash" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="users"><mxGeometry y="88" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="users_created" value="Created_At" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="users"><mxGeometry y="116" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="users_end" value="" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="users"><mxGeometry y="144" width="240" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="portfolios" value="&lt;b&gt;PORTFOLIOS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="240" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="portfolios_key" value="PK   Portfolio_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="portfolios"><mxGeometry y="32" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="portfolios_user" value="FK   User_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="portfolios"><mxGeometry y="60" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="portfolios_name" value="Name" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="portfolios"><mxGeometry y="88" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="portfolios_created" value="Created_At" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="portfolios"><mxGeometry y="116" width="240" height="28" as="geometry" /></mxCell>
+        <mxCell id="portfolios_end" value="" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="portfolios"><mxGeometry y="144" width="240" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="holdings" value="&lt;b&gt;HOLDINGS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="360" y="300" width="260" height="198" as="geometry" />
+        </mxCell>
+        <mxCell id="holdings_pk" value="PK   Holding_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="holdings"><mxGeometry y="32" width="260" height="28" as="geometry" /></mxCell>
+        <mxCell id="holdings_portfolio" value="FK   Portfolio_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="holdings"><mxGeometry y="60" width="260" height="28" as="geometry" /></mxCell>
+        <mxCell id="holdings_security" value="FK   Security_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="holdings"><mxGeometry y="88" width="260" height="28" as="geometry" /></mxCell>
+        <mxCell id="holdings_weight" value="Weight" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="holdings"><mxGeometry y="116" width="260" height="28" as="geometry" /></mxCell>
+        <mxCell id="holdings_created" value="Created_At" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="holdings"><mxGeometry y="144" width="260" height="28" as="geometry" /></mxCell>
+        <mxCell id="holdings_end" value="" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="holdings"><mxGeometry y="172" width="260" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="securities" value="&lt;b&gt;SECURITIES&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="720" y="40" width="270" height="198" as="geometry" />
+        </mxCell>
+        <mxCell id="securities_pk" value="PK   Security_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="securities"><mxGeometry y="32" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="securities_uk" value="UK   Ticker" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="securities"><mxGeometry y="60" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="securities_company" value="Company_Name" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="securities"><mxGeometry y="88" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="securities_sector" value="Sector" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="securities"><mxGeometry y="116" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="securities_industry" value="Industry" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="securities"><mxGeometry y="144" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="securities_end" value="" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="securities"><mxGeometry y="172" width="270" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="prices" value="&lt;b&gt;PRICE_BARS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="40" width="280" height="226" as="geometry" />
+        </mxCell>
+        <mxCell id="prices_pk" value="PK, FK   Security_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="prices"><mxGeometry y="32" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="prices_date" value="PK       Trading_Date" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="prices"><mxGeometry y="60" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="prices_open" value="Open" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="prices"><mxGeometry y="88" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="prices_close" value="Adjusted_Close" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="prices"><mxGeometry y="116" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="prices_volume" value="Volume" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="prices"><mxGeometry y="144" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="prices_end" value="" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="prices"><mxGeometry y="172" width="280" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="fundamentals" value="&lt;b&gt;FUNDAMENTALS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="330" width="300" height="254" as="geometry" />
+        </mxCell>
+        <mxCell id="fundamentals_fk" value="FK   Security_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="32" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_period" value="Period_End" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="60" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_filing" value="Filing_Date" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="88" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_revenue" value="Revenue_Growth" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="116" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_margin" value="Operating_Margin" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="144" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_cash" value="Free_Cash_Flow" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="172" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_source" value="Data_Source" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="fundamentals"><mxGeometry y="200" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="fundamentals_end" value="" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="fundamentals"><mxGeometry y="228" width="300" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="scores" value="&lt;b&gt;SCORES&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="720" y="330" width="270" height="226" as="geometry" />
+        </mxCell>
+        <mxCell id="scores_pk" value="PK   Score_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="32" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="scores_fk" value="FK   Security_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="60" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="scores_date" value="Score_Date" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="88" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="scores_momentum" value="Momentum_Score" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="116" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="scores_fundamental" value="Fundamental_Score" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="144" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="scores_composite" value="Composite_Score" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="172" width="270" height="28" as="geometry" /></mxCell>
+        <mxCell id="scores_end" value="Components / Methodology_Version" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="scores"><mxGeometry y="200" width="270" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="backtests" value="&lt;b&gt;BACKTESTS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="360" y="650" width="280" height="226" as="geometry" />
+        </mxCell>
+        <mxCell id="backtests_pk" value="PK   Backtest_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="32" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="backtests_fk" value="FK   User_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="60" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="backtests_status" value="Status" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="88" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="backtests_start" value="Start_Date" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="116" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="backtests_end_date" value="End_Date" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="144" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="backtests_benchmark" value="Benchmark" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="172" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="backtests_end" value="Parameters / Created_At" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="backtests"><mxGeometry y="200" width="280" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="results" value="&lt;b&gt;BACKTEST_RESULTS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="720" y="650" width="280" height="226" as="geometry" />
+        </mxCell>
+        <mxCell id="results_pk" value="PK   Result_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="32" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="results_fk" value="FK   Backtest_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="60" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="results_return" value="Total_Return" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="88" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="results_annual" value="Annualized_Return" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="116" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="results_sharpe" value="Sharpe_Ratio" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="144" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="results_drawdown" value="Max_Drawdown" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="172" width="280" height="28" as="geometry" /></mxCell>
+        <mxCell id="results_end" value="Volatility / Alpha_Vs_Benchmark" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="results"><mxGeometry y="200" width="280" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="equity" value="&lt;b&gt;EQUITY_CURVE_POINTS&lt;/b&gt;" style="shape=table;startSize=32;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=1;fontStyle=1;strokeWidth=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="650" width="300" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="equity_pk" value="PK   Equity_Point_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="equity"><mxGeometry y="32" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="equity_fk" value="FK   Backtest_ID" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="equity"><mxGeometry y="60" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="equity_date" value="Trading_Date" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="equity"><mxGeometry y="88" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="equity_value" value="Portfolio_Value" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="equity"><mxGeometry y="116" width="300" height="28" as="geometry" /></mxCell>
+        <mxCell id="equity_benchmark" value="Benchmark_Value" style="shape=tableRow;horizontal=0;fillColor=#ffffff;strokeColor=#666666;align=left;spacingLeft=8;" vertex="1" parent="equity"><mxGeometry y="144" width="300" height="26" as="geometry" /></mxCell>
+
+        <mxCell id="e_user_portfolio" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="users" target="portfolios"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_portfolio_holdings" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="portfolios" target="holdings"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_security_holdings" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="securities" target="holdings"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_security_prices" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="securities" target="prices"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_security_fundamentals" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="securities" target="fundamentals"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_security_scores" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="securities" target="scores"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_user_backtests" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="users" target="backtests"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_backtest_results" value="1:1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERone;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="backtests" target="results"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_backtest_equity" value="1:N" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;endArrow=ERmany;endFill=0;startArrow=ERone;startFill=0;" edge="1" parent="1" source="backtests" target="equity"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
