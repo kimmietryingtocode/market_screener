@@ -1,32 +1,17 @@
-"""Weekly market screen: sectors -> industries -> companies -> FactSet list.
+"""Weekly market screen: sectors -> industries -> companies -> FactSet list."""
 
-Usage:
-    python run_screener.py [--config config.yaml]
-
-The pipeline intentionally stops at the FactSet lookup list. Fundamental
-scoring and backtesting happen after the FactSet data comes back.
-"""
-
-import argparse
 from pathlib import Path
 
 import yaml
 
-from pipeline import company_scan, factset_export, industry_scan, sector_scan
+from .pipeline import company_scan, factset_export, industry_scan, sector_scan
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path(__file__).resolve().parent / "config.yaml",
-    )
-    args = parser.parse_args()
-
-    config = yaml.safe_load(args.config.read_text())
+def run(config_path: Path) -> Path:
+    """Run the sweep and return the immutable screen output directory."""
+    config = yaml.safe_load(config_path.read_text())
 
     print("Stage 1/4: scanning sectors...")
     sectors = sector_scan.scan_sectors(config)
@@ -49,12 +34,18 @@ def main() -> None:
 
     print("\nStage 4/4: writing FactSet lookup list...")
     out_dir = factset_export.write_exports(
-        shortlist, sectors, industries, REPO_ROOT / config["output"]["directory"]
+        shortlist,
+        sectors,
+        industries,
+        REPO_ROOT / config["output"]["directory"],
+        config,
     )
     print(f"\n{len(shortlist)} companies to research. Files in {out_dir}/:")
     for path in sorted(out_dir.iterdir()):
         print(f"  {path.name}")
 
-
-if __name__ == "__main__":
-    main()
+    queue = factset_export.select_review_queue(shortlist, config)
+    print("\nTop 10 for FactSet review:")
+    print(queue[["ticker", "company", "sector", "industry", "score"]]
+          .to_string(index=False, float_format="%.3f"))
+    return out_dir

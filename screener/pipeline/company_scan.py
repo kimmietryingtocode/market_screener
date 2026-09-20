@@ -128,4 +128,8 @@ def scan_companies(selected_industries: pd.DataFrame, config: dict) -> pd.DataFr
         .drop_duplicates(subset="ticker")
         .reset_index(drop=True)
     )
-    return shortlist
+    shortlist = shortlist.rename(columns={"score": "within_industry_score"})
+    shortlist["score"] = metrics.composite_score(shortlist, config["score_weights"])
+    return shortlist.sort_values(
+        ["score", "ticker"], ascending=[False, True], kind="stable"
+    ).reset_index(drop=True)

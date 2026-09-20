@@ -1,0 +1,5 @@
+date,raw_close,adjusted_close,event,cash_dividend,split_ratio
+2024-05-01,100,49.5,none,0,1
+2024-05-02,102,50.49,dividend,1,1
+2024-05-03,51,50.49,split,0,2
+2024-05-06,52,51.48,none,0,1

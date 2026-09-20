@@ -16,6 +16,10 @@ It writes a local snapshot to `data/price_bars.csv`, which is ignored by Git.
 Move orchestration here after the PostgreSQL migrations are added; reuse the
 pure calculations in `screener/pipeline/` instead of copying them.
 
+`worker/run_backtest.py` invokes the C++ engine with historical prices and a
+dated target schedule. The engine writes summary, trades, holdings, and equity
+curve CSV outputs.
+
 Worker rules:
 
 - PostgreSQL is the durable source of truth.

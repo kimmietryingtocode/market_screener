@@ -33,15 +33,19 @@ score_weights:
   low_volatility: 0.10    # rank of -volatility_3m (calmer is better)
 
 sector_scan:
-  top_n: 3                # sectors that advance to the industry scan
+  top_n: 5                # sectors that advance to the industry scan
 
 industry_scan:
-  top_n_per_sector: 3     # industries per sector that advance
+  top_n_per_sector: 2     # industries per sector that advance
   min_market_weight: 0.02 # skip industries under 2% of their sector
 
 company_scan:
   candidates_per_table: 10   # rows taken from each Yahoo leader table
   top_n_per_industry: 5      # companies per industry in the final list
+  review_queue:
+    top_n: 10
+    max_per_sector: 3
+    max_per_industry: 2
   filters:
     min_price: 5.0
     min_market_cap_usd: 1000000000
@@ -49,3 +53,36 @@ company_scan:
 
 output:
   directory: data/screener   # relative to the repo root; a dated subfolder is created per run
+
+# Manual FactSet Standardized Summary import stage.
+# This runs separately after the weekly screener and never changes the
+# original market-score ordering.
+factset:
+  maximum_age_days: 120
+  validation:
+    relative_tolerance: 0.005
+    amount_tolerance_millions: 1.0
+    per_share_tolerance: 0.01
+    percentage_tolerance: 0.001
+    minimum_forecast_years: 3
+  scoring:
+    pillar_weights:
+      growth: 0.35
+      operating_quality: 0.35
+      financial_strength: 0.30
+
+backtest:
+  research_tickers: [AMGN, CRGY, LPG, MPC, MRK, MRNA, PBF, TWST]
+  start: 2023-01-01
+  end: 2025-12-31
+  signal_time: "18:00"
+  timezone: America/New_York
+  rebalance: monthly
+  execution: next_trading_close
+  initial_capital: 100000
+  transaction_cost_bps: 10
+  trend_days: 200
+  maximum_position_weight: 0.15
+  maximum_sector_weight: 0.40
+  weighting: inverse-vol
+  benchmark: SPY

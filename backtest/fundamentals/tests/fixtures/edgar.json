@@ -1,0 +1,85 @@
+{
+  "description": "Synthetic reduced SEC-shaped facts: distinct tags, fiscal calendars, YTD cash flows, and a later revision. Values are test units, not published company financials.",
+  "filings": {
+    "old": {"acceptanceDateTime": "2023-02-15T21:30:00Z", "reportDate": "2022-12-31"},
+    "q1": {"acceptanceDateTime": "2023-05-01T20:30:00Z", "reportDate": "2023-03-31"},
+    "q2": {"acceptanceDateTime": "2023-08-01T20:30:00Z", "reportDate": "2023-06-30"},
+    "q3": {"acceptanceDateTime": "2023-11-01T20:30:00Z", "reportDate": "2023-09-30"},
+    "fy": {"acceptanceDateTime": "2024-02-15T21:30:00Z", "reportDate": "2023-12-31"},
+    "revision": {"acceptanceDateTime": "2025-02-15T21:30:00Z", "reportDate": "2024-12-31"},
+    "apple-q1": {"acceptanceDateTime": "2023-02-02T21:30:00Z", "reportDate": "2022-12-31"},
+    "apple-q2": {"acceptanceDateTime": "2023-05-04T21:30:00Z", "reportDate": "2023-04-01"},
+    "apple-q3": {"acceptanceDateTime": "2023-08-03T21:30:00Z", "reportDate": "2023-07-01"},
+    "apple-fy": {"acceptanceDateTime": "2023-11-02T21:30:00Z", "reportDate": "2023-09-30"},
+    "msft-fy": {"acceptanceDateTime": "2023-07-27T20:30:00Z", "reportDate": "2023-06-30"}
+  },
+  "companies": {
+    "AAPL": {"facts": {"us-gaap": {
+      "SalesRevenueNet": {"units": {"USD": [{"start":"2021-09-26","end":"2022-09-24","val":400,"filed":"2022-11-01","accn":"apple-old","form":"10-K","fy":2022,"fp":"FY"}]}},
+      "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": [
+        {"start":"2022-09-25","end":"2022-12-31","val":100,"filed":"2023-02-02","accn":"apple-q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2022-09-25","end":"2023-04-01","val":210,"filed":"2023-05-04","accn":"apple-q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2022-09-25","end":"2023-07-01","val":330,"filed":"2023-08-03","accn":"apple-q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2022-09-25","end":"2023-09-30","val":460,"filed":"2023-11-02","accn":"apple-fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}}
+    }}},
+    "MSFT": {"facts": {"us-gaap": {
+      "RevenueFromContractWithCustomerIncludingAssessedTax": {"units": {"USD": [{"start":"2022-07-01","end":"2023-06-30","val":300,"filed":"2023-07-27","accn":"msft-fy","form":"10-K","fy":2023,"fp":"FY"}]}},
+      "SalesRevenueNet": {"units": {"USD": [{"start":"2022-07-01","end":"2023-06-30","val":999,"filed":"2023-07-27","accn":"msft-fy","form":"10-K","fy":2023,"fp":"FY"}]}}
+    }}},
+    "KO": {"facts": {"us-gaap": {
+      "Revenues": {"units": {"USD": [
+        {"start":"2022-01-01","end":"2022-12-31","val":400,"filed":"2023-02-15","accn":"old","form":"10-K","fy":2022,"fp":"FY"},
+        {"start":"2023-01-01","end":"2023-03-31","val":100,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-06-30","val":220,"filed":"2023-08-01","accn":"q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2023-01-01","end":"2023-09-30","val":360,"filed":"2023-11-01","accn":"q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2023-01-01","end":"2023-12-31","val":520,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"},
+        {"start":"2023-01-01","end":"2023-12-31","val":540,"filed":"2025-02-15","accn":"revision","form":"10-K","fy":2024,"fp":"FY"}
+      ]}},
+      "OperatingIncomeLoss": {"units": {"USD": [
+        {"start":"2023-01-01","end":"2023-03-31","val":15,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-06-30","val":33,"filed":"2023-08-01","accn":"q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2023-01-01","end":"2023-09-30","val":54,"filed":"2023-11-01","accn":"q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2023-01-01","end":"2023-12-31","val":80,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "DepreciationDepletionAndAmortization": {"units": {"USD": [
+        {"start":"2023-01-01","end":"2023-03-31","val":2,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-06-30","val":5,"filed":"2023-08-01","accn":"q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2023-01-01","end":"2023-09-30","val":9,"filed":"2023-11-01","accn":"q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2023-01-01","end":"2023-12-31","val":14,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "NetIncomeLoss": {"units": {"USD": [
+        {"start":"2023-01-01","end":"2023-03-31","val":10,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-06-30","val":22,"filed":"2023-08-01","accn":"q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2023-01-01","end":"2023-09-30","val":36,"filed":"2023-11-01","accn":"q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2023-01-01","end":"2023-12-31","val":52,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+        {"start":"2023-01-01","end":"2023-03-31","val":10,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-06-30","val":25,"filed":"2023-08-01","accn":"q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2023-01-01","end":"2023-09-30","val":45,"filed":"2023-11-01","accn":"q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2023-01-01","end":"2023-12-31","val":70,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "PaymentsToAcquirePropertyPlantAndEquipment": {"units": {"USD": [
+        {"start":"2023-01-01","end":"2023-03-31","val":2,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-06-30","val":5,"filed":"2023-08-01","accn":"q2","form":"10-Q","fy":2023,"fp":"Q2"},
+        {"start":"2023-01-01","end":"2023-09-30","val":9,"filed":"2023-11-01","accn":"q3","form":"10-Q","fy":2023,"fp":"Q3"},
+        {"start":"2023-01-01","end":"2023-12-31","val":14,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "EarningsPerShareDiluted": {"units": {"USD/shares": [
+        {"start":"2023-01-01","end":"2023-03-31","val":1,"filed":"2023-05-01","accn":"q1","form":"10-Q","fy":2023,"fp":"Q1"},
+        {"start":"2023-01-01","end":"2023-12-31","val":5.2,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": [{"start":"2023-01-01","end":"2023-12-31","val":10,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}]}},
+      "CommonStockSharesOutstanding": {"units": {"shares": [{"end":"2023-12-31","val":12,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}]}},
+      "Assets": {"units": {"USD": [
+        {"end":"2022-12-31","val":200,"filed":"2023-02-15","accn":"old","form":"10-K","fy":2022,"fp":"FY"},
+        {"end":"2023-12-31","val":250,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}},
+      "StockholdersEquity": {"units": {"USD": [
+        {"end":"2022-12-31","val":100,"filed":"2023-02-15","accn":"old","form":"10-K","fy":2022,"fp":"FY"},
+        {"end":"2023-12-31","val":140,"filed":"2024-02-15","accn":"fy","form":"10-K","fy":2023,"fp":"FY"}
+      ]}}
+    }}}
+  }
+}
