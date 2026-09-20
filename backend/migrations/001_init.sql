@@ -1,6 +1,7 @@
 -- 001_init.sql
 -- Core schema: users, portfolios, holdings.
--- Python service never writes here directly in v1 — Go owns all persistence.
+-- FastAPI owns user and portfolio persistence. Quant workers write market data
+-- and score tables from the follow-up migration.
 
 CREATE TABLE users (
     id            BIGSERIAL PRIMARY KEY,

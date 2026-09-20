@@ -1,12 +1,17 @@
-# Portfolio analysis platform
+# Market screener and portfolio analysis platform
 
-A small full-stack system for analyzing investment portfolios: create a portfolio, add holdings, get back real risk/return metrics (Sharpe ratio, volatility, max drawdown) computed from actual market data.
+This project combines momentum and fundamental signals to rank stocks, explain
+the score, and evaluate portfolio strategies against a benchmark.
 
-Two services talk to each other: a Go API that owns users and data, and a Python service that does the math.
+The public backend is FastAPI. Python owns data ingestion and quant
+calculations. The backtest engine is C++. PostgreSQL is the source of truth
+and Redis is used for cache and job state.
 
-**Status:** backend scaffolded, untested end-to-end. No frontend yet. See [Known gaps](#known-gaps--next-steps).
+**Status:** FastAPI migration scaffolded, price ingestion verified against
+Yahoo Finance, and C++ backtest boundary documented. No frontend yet.
 
 ## Contents
+
 - [Architecture](#architecture)
 - [Who owns what](#who-owns-what)
 - [Quickstart](#quickstart)
@@ -17,61 +22,79 @@ Two services talk to each other: a Go API that owns users and data, and a Python
 
 ## Architecture
 
-![Portfolio platform architecture](docs/architecture.svg)
+Read the target ownership and data flow in [docs/architecture.md](docs/architecture.md).
+The ERD is available at [docs/market-screener-erd.drawio](docs/market-screener-erd.drawio).
 
-A request to "show me my portfolio's Sharpe ratio" flows like this: the browser hits the Go API, Go reads the portfolio's holdings from Postgres and forwards them to the Python service, Python pulls real price history and computes the numbers, Go stores and returns the result.
+The intended request flow is:
 
-Two rules that keep this simple:
-- **Postgres has one writer.** Only the Go API touches it. Python never sees a connection string.
-- **Python is stateless.** Every request carries everything it needs (tickers + weights). No portfolio ever "lives" in Python.
+```text
+React frontend -> FastAPI backend -> PostgreSQL / Redis
+                                      -> Python worker
+                                      -> C++ backtest engine
+```
 
-Redis isn't pictured because it isn't wired in yet — see [Known gaps](#known-gaps--next-steps) for where it goes.
+The public API contracts are documented in [docs/api-contracts.md](docs/api-contracts.md).
 
 ## Who owns what
 
-Agree on the contract below *before* building in parallel — it's the seam between your two pieces of work.
+Agree on the contract below _before_ building in parallel — it's the seam between your two pieces of work.
 
-| | Go API (`/api`) | Python quant service (`/quant`) |
-|---|---|---|
-| Owns | Users, auth, portfolios, holdings, all Postgres access | Computing return/volatility/Sharpe/max drawdown from price data |
-| Doesn't touch | Any finance math | Postgres, auth, anything stateful |
-| Contract | Sends `{holdings: [{ticker, weight}], lookback}` to Python | Receives that, returns `{annualized_return, volatility, sharpe_ratio, max_drawdown}` |
+|               | FastAPI backend (`/backend`)                                    | Quant and workers (`/quant`, `/worker`, `/screener`)                     |
+| ------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Owns          | Public HTTP API, auth, authorization, persistence orchestration | Ingestion, features, scoring, portfolio math, and backtest orchestration |
+| Doesn't touch | Quant formulas or provider-specific data cleaning               | Browser auth and public HTTP concerns                                    |
+| Contract      | Returns stable JSON documented in `docs/api-contracts.md`       | Produces validated data and job results                                  |
 
-The shapes on both sides already match (`portfolio_handler.go`'s `quantAnalyticsRequest` ↔ `schemas.py`'s `AnalyticsRequest`). If one of you needs to change the contract, tell the other person before pushing — a silent field rename breaks the integration with no compile error on either side, since they're two separate languages.
+If one of you changes a JSON field, update the contract document and the Pydantic schema together.
 
-## Quickstart
+## Target quickstart
 
-Each step has a checkpoint. If the checkpoint doesn't match, stop and fix it before moving on — don't chain failures.
+Prerequisites: Docker Desktop or Colima, Python 3.12+, and Git.
 
-**Prereqs:** Go 1.22+, Python 3.12+, Docker Desktop or Colima running, `git`.
+Set local development variables in your shell or an ignored `.env` file:
 
-### 1. Clone and branch
 ```bash
-git clone <repo-url>
-cd portfolio-platform
-git checkout -b <yourname>/setup
+export POSTGRES_USER=portfolio_user
+export POSTGRES_PASSWORD=replace-with-a-local-password
+export POSTGRES_DB=portfolio
+export JWT_SECRET=replace-with-a-long-random-local-secret
 ```
 
-### 2. Start Postgres
+Start the target FastAPI backend and its dependencies:
+
 ```bash
-docker run --name pg-portfolio -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=portfolio -p 5432:5432 -d postgres:16-alpine
-
-psql postgres://postgres:postgres@localhost:5432/portfolio -f api/migrations/001_init.sql
+docker compose up --build backend quant postgres redis
 ```
-> No `psql`? `brew install libpq && brew link --force libpq` (Mac) or `apt install postgresql-client` (Linux/WSL).
 
-**Checkpoint:** `psql postgres://postgres:postgres@localhost:5432/portfolio -c '\dt'` lists `users`, `portfolios`, `holdings`, `analytics_runs`.
+Check the target API:
 
-### 3. Run the Go API
 ```bash
-cd api
-go mod tidy
-go run ./cmd/server
+curl http://localhost:8081/healthz
 ```
-**Checkpoint:** terminal prints `listening on :8080`, and in another terminal `curl localhost:8080/healthz` returns `{"status":"ok"}`.
 
-### 4. Run the Python quant service (separate terminal)
+Run price ingestion locally when you need a fresh snapshot:
+
+```bash
+/opt/homebrew/bin/python3.12 -m venv screener/.venv
+screener/.venv/bin/python -m pip install -r screener/requirements.txt
+screener/.venv/bin/python screener/ingest_prices.py --period 2y
+```
+
+After setup, the common checks are also available through `make`:
+
+```bash
+make validate
+make compose-config
+make ingest-prices
+```
+
+The generated `data/price_bars.csv` is local and ignored by Git. The next
+worker step loads this normalized shape into PostgreSQL `price_bars`.
+
+Prerequisites: Python 3.12+, Docker Desktop or Colima, and Git.
+
+### Run the quant service locally
+
 ```bash
 cd quant
 python3 -m venv venv
@@ -79,51 +102,63 @@ source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
+
 **Checkpoint:** `curl localhost:8000/healthz` returns `{"status":"ok"}`.
 
 You can also hit yfinance-backed market data directly:
+
 ```bash
 curl "localhost:8000/market/quotes?tickers=SPY,QQQ,AAPL,MSFT"
 curl "localhost:8000/market/history?tickers=SPY,AAPL&period=1mo&interval=1d"
 ```
 
-### 5. Run both together with Docker Compose (optional, once each runs standalone)
+### Run the full local stack
+
 ```bash
-docker compose up --build
+docker compose up --build backend quant postgres redis
 ```
-Same checkpoints as above, against `localhost:8080` and `localhost:8000`.
+
+Check the services:
+
+```bash
+curl http://localhost:8081/healthz
+curl http://localhost:8000/healthz
+```
 
 On Apple Silicon with Colima, this compose file defaults services to `linux/arm64`.
 Override with `DOCKER_PLATFORM=linux/amd64` only if your Docker VM is amd64.
 
-The Compose Postgres host port is `15432` to avoid conflicts with a local Homebrew Postgres on `5432`:
+The Compose Postgres host port is `15432` to avoid conflicts with a local Postgres on `5432`:
+
 ```bash
-psql postgres://postgres:postgres@127.0.0.1:15432/portfolio -c '\dt'
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt'
 ```
 
 ## Verify it's working
 
-This is the full loop — register, create a portfolio, get real analytics back through both services.
+This verifies the FastAPI public backend.
 
 ```bash
 # 1. Register — copy the "token" from the response
-curl -X POST localhost:8080/api/v1/auth/register \
+curl -X POST localhost:8081/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"you@drexel.edu","password":"testpass123"}'
 
 # 2. Create a portfolio — copy the "id" from the response
-curl -X POST localhost:8080/api/v1/portfolios \
+curl -X POST localhost:8081/api/v1/portfolios \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"name":"tech","holdings":[{"ticker":"AAPL","weight":0.5},{"ticker":"MSFT","weight":0.5}]}'
 
-# 3. Get analytics — this is the Go-calls-Python round trip
-curl localhost:8080/api/v1/portfolios/<ID>/analytics \
+# 3. Get analytics — this is the FastAPI-to-quant round trip
+curl localhost:8081/api/v1/portfolios/<ID>/analytics \
   -H "Authorization: Bearer <TOKEN>"
 ```
+
 **Success looks like:** a JSON body with `annualized_return`, `volatility`, `sharpe_ratio`, `max_drawdown` — real numbers, not zeros or nulls.
 
 For a direct quant-service market data check:
+
 ```bash
 curl "localhost:8000/market/quotes"
 curl "localhost:8000/market/history?tickers=SPY&period=5d&interval=1d"
@@ -131,45 +166,48 @@ curl "localhost:8000/market/history?tickers=SPY&period=5d&interval=1d"
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `go run` fails with missing module errors | `go mod tidy` didn't run, or no network access | Re-run `go mod tidy` from `/api` with internet on |
-| Go API returns 502 on `/analytics` | Python service isn't running, or `QUANT_SERVICE_URL` is wrong | Check `curl localhost:8000/healthz` works first |
-| Python returns 422 on `/analytics/portfolio` | Weights don't sum to 1.0, or a ticker is invalid/delisted | Check the error detail in the response body |
-| `psql: command not found` | No Postgres client installed locally | See the brew/apt note in step 2, or use `docker exec -it pg-portfolio psql -U postgres -d portfolio` instead |
-| Postgres connection refused | Container isn't up yet or port 5432 is already taken by another local Postgres | `docker ps` to check it's running; if port's taken, stop the other Postgres or remap the port |
-| `401 Unauthorized` on portfolio routes | Missing or expired `Authorization: Bearer <token>` header | Re-run login/register to get a fresh token |
-| Docker Compose `api` container exits immediately | It started before Postgres was ready | Compose already has a healthcheck dependency — if this still happens, check `docker compose logs api` |
+| Symptom                                      | Likely cause                                                                   | Fix                                                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| FastAPI returns 502 on `/analytics`          | Python quant service isn't running, or `QUANT_SERVICE_URL` is wrong            | Check `curl localhost:8000/healthz` works first                                                              |
+| Python returns 422 on `/analytics/portfolio` | Weights don't sum to 1.0, or a ticker is invalid/delisted                      | Check the error detail in the response body                                                                  |
+| `psql: command not found`                    | No Postgres client installed locally                                           | See the brew/apt note in step 2, or use `docker exec -it pg-portfolio psql -U postgres -d portfolio` instead |
+| Postgres connection refused                  | Container isn't up yet or port 5432 is already taken by another local Postgres | `docker ps` to check it's running; if port's taken, stop the other Postgres or remap the port                |
+| `401 Unauthorized` on portfolio routes       | Missing or expired `Authorization: Bearer <token>` header                      | Re-run login/register to get a fresh token                                                                   |
+| Docker Compose `backend` exits immediately   | It started before Postgres was ready                                           | Check `docker compose logs backend`                                                                          |
 
 ## Project layout
 
 ```
-api/                    Go service (Gin, pgx, JWT)
-  cmd/server/           entrypoint
-  internal/
-    auth/               JWT + bcrypt
-    config/             env var loading
-    db/                 Postgres pool
-    handlers/           HTTP handlers (auth, portfolios, analytics call-out)
-    middleware/          auth middleware
-    models/             shared structs
-  migrations/           SQL schema
-
-quant/                  Python service (FastAPI)
+backend/                Target public FastAPI backend
   app/
-    routers/            HTTP routes
-    services/           the actual quant math (pure functions, unit-testable)
-    models/             pydantic request/response schemas
+    routers/             auth, portfolios, analytics
+    auth.py              JWT and password hashing
+    db.py                PostgreSQL pool/lifespan
+    schemas.py           request/response models
 
-docker-compose.yml      wires postgres + redis + quant + api together
+quant/                  Stateless Python quant service (FastAPI)
+  app/
+    routers/             market and portfolio analytics routes
+    services/            market data and quant calculations
+    models/              Pydantic schemas
+
+screener/               Existing sector/industry/company momentum pipeline
+  ingest_prices.py       verified Yahoo Finance price ingestion
+  pipeline/              reusable data and scoring calculations
+
+worker/                 Background job ownership and future orchestration
+backtest/               C++ backtest engine and build/tests
+docs/                   Architecture, API contracts, and ERD
+docker-compose.yml      local Postgres, Redis, quant, and FastAPI
 ```
 
 ## Known gaps / next steps
 
 In order of what to tackle next:
 
-1. **Confirm the Go service actually builds.** Written carefully but not compiled in the environment it was scaffolded in — first thing to do locally is `go build ./...` and fix whatever surfaces.
-2. **Wire Redis into the analytics endpoint** as a cache (key: `portfolio:<id>:analytics`, TTL ~15 min) — deferred on purpose until there's a slow endpoint worth caching, and now there is.
-3. **Frontend dashboard** (React) — login, create portfolio, view analytics.
-4. **Replace the hardcoded 4% risk-free rate** in `portfolio_analytics.py` with a real lookup (FRED's 3-month T-bill series) — makes the Sharpe ratio defensible if someone asks what rate you used.
-5. **Deploy to AWS** — ECS Fargate for both containers + RDS Postgres + ElastiCache Redis is the standard pattern here.
+1. **Add PostgreSQL migrations** for securities, price bars, fundamentals, scores, and backtests.
+2. **Move ingestion orchestration into `worker/`** while reusing `screener/pipeline` calculations.
+3. **Add the ranking API** and persist score components.
+4. **Expose the C++ backtest engine** through `worker/run_backtest.py`.
+5. **Wire Redis job state and WebSocket progress.**
+6. **Build the React dashboard and deploy the demo.**

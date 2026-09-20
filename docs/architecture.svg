@@ -1,6 +1,6 @@
 <svg width="680" height="420" viewBox="0 0 680 420" xmlns="http://www.w3.org/2000/svg" role="img">
   <title>Portfolio platform architecture</title>
-  <desc>A browser sends a request to the Go API, which reads/writes Postgres and calls the Python quant service for analytics; the quant service fetches market data from Yahoo Finance.</desc>
+  <desc>A browser sends a request to the FastAPI backend, which reads/writes Postgres and calls the Python quant service for analytics; the quant service fetches market data from Yahoo Finance.</desc>
 
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -15,9 +15,9 @@
   <line x1="340" y1="64" x2="340" y2="106" stroke="#5f5e5a" stroke-width="1.5" marker-end="url(#arrow)"/>
   <text x="350" y="88" font-family="sans-serif" font-size="12" fill="#5f5e5a">REST + JWT</text>
 
-  <!-- Go API container -->
+  <!-- FastAPI backend container -->
   <rect x="60" y="110" width="560" height="160" rx="16" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.75"/>
-  <text x="80" y="138" font-family="sans-serif" font-size="14" font-weight="500" fill="#042C53">Go API (Gin)</text>
+  <text x="80" y="138" font-family="sans-serif" font-size="14" font-weight="500" fill="#042C53">FastAPI backend</text>
   <text x="80" y="156" font-family="sans-serif" font-size="12" fill="#0C447C">Auth, portfolios, holdings</text>
 
   <!-- Auth + CRUD box -->
