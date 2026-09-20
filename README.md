@@ -34,6 +34,7 @@ React frontend -> FastAPI backend -> PostgreSQL / Redis
 ```
 
 The public API contracts are documented in [docs/api-contracts.md](docs/api-contracts.md).
+Frontend request/response examples are in [docs/api-json-guide.md](docs/api-json-guide.md).
 
 ## Who owns what
 
@@ -197,7 +198,7 @@ screener/               Existing sector/industry/company momentum pipeline
 
 worker/                 Background job ownership and future orchestration
 backtest/               C++ backtest engine and build/tests
-docs/                   Architecture, API contracts, and ERD
+docs/                   Architecture, API JSON contracts, and ERD
 docker-compose.yml      local Postgres, Redis, quant, and FastAPI
 ```
 
