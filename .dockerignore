@@ -1,0 +1,9 @@
+.git
+.gitignore
+.DS_Store
+data
+backtest/build
+screener/venv
+screener/.pytest_cache
+__pycache__
+*.pyc
