@@ -36,6 +36,9 @@ Authorization: Bearer <jwt>
 
 ## Rankings
 
+This endpoint is a planned public contract. It is not implemented in the
+current backend yet.
+
 `GET /api/v1/rankings/latest`
 
 ```json
@@ -126,13 +129,28 @@ Response `202`:
 
 ## Error shape
 
+The current backend uses FastAPI's native error responses. Clients should use
+the HTTP status and should not depend on the exact message text.
+
+Validation or application error:
+
 ```json
 {
-  "error": {
-    "code": "INVALID_PARAMETERS",
-    "message": "holding weights must sum to 1.0",
-    "request_id": "req_123"
-  }
+  "detail": "holding weights must sum to 1.0, got 0.9000"
+}
+```
+
+Request validation error:
+
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "holdings"],
+      "msg": "List should have at least 1 item after validation, not 0",
+      "type": "too_short"
+    }
+  ]
 }
 ```
 

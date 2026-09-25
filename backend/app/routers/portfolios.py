@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from psycopg.errors import UniqueViolation
 
-from app.auth import current_user_id
+from app.core.security import current_user_id
 from app.schemas import CreatePortfolioRequest, HoldingResponse, PortfolioResponse
 
 router = APIRouter(prefix="/api/v1/portfolios", tags=["portfolios"])

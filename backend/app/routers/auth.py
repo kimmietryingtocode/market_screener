@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, status
 from psycopg.errors import UniqueViolation
 
-from app.auth import create_access_token, hash_password, verify_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.schemas import AuthRequest, AuthResponse
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])

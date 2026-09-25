@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.db import lifespan
+from app.database.session import lifespan
 from app.routers import analytics, auth, portfolios
 
 app = FastAPI(title="Market Screener API", version="0.1.0", lifespan=lifespan)
