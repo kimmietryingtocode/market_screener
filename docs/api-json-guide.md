@@ -180,7 +180,9 @@ directly.
 
 ## 4. Planned stock ranking contract
 
-This route is documented for frontend work but is not implemented yet:
+This route is documented for frontend work but is not implemented in the
+current backend. The frontend should not call it until a backend router is
+added and the route is included in the API verification flow:
 
 ```http
 GET /api/v1/rankings/latest

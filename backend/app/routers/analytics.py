@@ -3,8 +3,8 @@ import json
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.auth import current_user_id
-from app.config import settings
+from app.core.config import settings
+from app.core.security import current_user_id
 
 router = APIRouter(prefix="/api/v1/portfolios", tags=["analytics"])
 

@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 from psycopg_pool import ConnectionPool
 
-from app.config import settings
+from app.core.config import settings
 
 
 def create_pool() -> ConnectionPool:

@@ -8,7 +8,8 @@ calculations. The backtest engine is C++. PostgreSQL is the source of truth
 and Redis is used for cache and job state.
 
 **Status:** FastAPI migration scaffolded, price ingestion verified against
-Yahoo Finance, and C++ backtest boundary documented. No frontend yet.
+Yahoo Finance, and C++ backtest boundary documented. Frontend ownership is
+reserved in `frontend/`; the React application is not initialized yet.
 
 ## Contents
 
@@ -35,6 +36,21 @@ React frontend -> FastAPI backend -> PostgreSQL / Redis
 
 The public API contracts are documented in [docs/api-contracts.md](docs/api-contracts.md).
 Frontend request/response examples are in [docs/api-json-guide.md](docs/api-json-guide.md).
+The backtest wrapper, data validation, and database mapping are in
+[docs/data-contract.md](docs/data-contract.md).
+
+## Project layout
+
+| Directory   | Responsibility                                          |
+| ----------- | ------------------------------------------------------- |
+| `frontend/` | Browser application; calls FastAPI only                 |
+| `backend/`  | FastAPI public API, auth, and persistence orchestration |
+| `quant/`    | Stateless market and portfolio calculations             |
+| `worker/`   | Ingestion, scoring, and job orchestration               |
+| `backtest/` | C++ accounting engine and its input/output contract     |
+| `screener/` | Existing research and screening pipeline                |
+
+Frontend setup notes are in [frontend/README.md](frontend/README.md).
 
 ## Who owns what
 
