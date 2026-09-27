@@ -17,6 +17,8 @@ def run_engine(
     benchmark: str,
     start_date: str | None = None,
     end_date: str | None = None,
+    cost_bps: float | None = None,
+    initial_capital: float | None = None,
 ) -> Path:
     command = [
         str(engine),
@@ -29,13 +31,23 @@ def run_engine(
         command.extend(["--start", start_date])
     if end_date:
         command.extend(["--end", end_date])
+    if cost_bps is not None:
+        command.extend(["--cost-bps", str(cost_bps)])
+    if initial_capital is not None:
+        command.extend(["--initial-capital", str(initial_capital)])
 
-    completed = subprocess.run(
-        command,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "engine returned no diagnostic").strip()
+        raise RuntimeError(
+            f"backtest engine failed with exit code {exc.returncode}: {detail}"
+        ) from exc
     if not (output_dir / "summary.csv").is_file():
         raise RuntimeError(
             "backtest engine completed without summary.csv: "
@@ -53,6 +65,8 @@ def main() -> None:
     parser.add_argument("--benchmark", default="SPY")
     parser.add_argument("--start")
     parser.add_argument("--end")
+    parser.add_argument("--cost-bps", type=float)
+    parser.add_argument("--initial-capital", type=float)
     args = parser.parse_args()
 
     output_dir = run_engine(
@@ -63,6 +77,8 @@ def main() -> None:
         args.benchmark,
         args.start,
         args.end,
+        args.cost_bps,
+        args.initial_capital,
     )
     print(f"Backtest outputs: {output_dir}")
 
