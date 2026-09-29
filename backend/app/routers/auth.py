@@ -1,39 +1,36 @@
-from fastapi import APIRouter, HTTPException, Request, status
-from psycopg.errors import UniqueViolation
+from fastapi import APIRouter, Request, status
 
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.http_errors import to_http_exception
 from app.schemas import AuthRequest, AuthResponse
+from app.services import auth_service
+from app.services.errors import ServiceError
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def register(request: Request, payload: AuthRequest) -> AuthResponse:
     try:
         with request.app.state.db.connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO users (email, password_hash) VALUES (%s, %s) RETURNING id",
-                    (payload.email.lower(), hash_password(payload.password)),
-                )
-                user_id = cursor.fetchone()[0]
-    except UniqueViolation as exc:
-        raise HTTPException(status_code=409, detail="email already registered") from exc
-
-    return AuthResponse(token=create_access_token(user_id))
+            token = auth_service.register(
+                connection, payload.email, payload.password, client_ip=_client_ip(request)
+            )
+    except ServiceError as exc:
+        raise to_http_exception(exc)
+    return AuthResponse(token=token)
 
 
 @router.post("/login", response_model=AuthResponse)
 def login(request: Request, payload: AuthRequest) -> AuthResponse:
-    with request.app.state.db.connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id, password_hash FROM users WHERE email = %s",
-                (payload.email.lower(),),
+    try:
+        with request.app.state.db.connection() as connection:
+            token = auth_service.login(
+                connection, payload.email, payload.password, client_ip=_client_ip(request)
             )
-            user = cursor.fetchone()
-
-    if user is None or not verify_password(payload.password, user[1]):
-        raise HTTPException(status_code=401, detail="invalid email or password")
-
-    return AuthResponse(token=create_access_token(user[0]))
+    except ServiceError as exc:
+        raise to_http_exception(exc)
+    return AuthResponse(token=token)
