@@ -1,0 +1,526 @@
+{
+  "info": {
+    "name": "Market Screener API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "backendUrl", "value": "http://127.0.0.1:8081" },
+    { "key": "quantUrl", "value": "http://127.0.0.1:8000" },
+    { "key": "email", "value": "" },
+    { "key": "password", "value": "correct-horse-battery" },
+    { "key": "token", "value": "" },
+    { "key": "portfolioId", "value": "" },
+    { "key": "backtestId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Backend",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": { "method": "GET", "url": "{{backendUrl}}/healthz" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "pm.test('reports ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+          ] } }]
+        },
+        {
+          "name": "GET /readyz",
+          "request": { "method": "GET", "url": "{{backendUrl}}/readyz" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('ready with postgres reachable', () => {",
+            "  pm.expect(body.ready).to.be.true;",
+            "  pm.expect(body.checks.postgres).to.eql('ok');",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "Response carries X-Request-ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Request-ID", "value": "newman-trace-{{$randomUUID}}" }],
+            "url": "{{backendUrl}}/healthz"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('echoes the upstream request id for tracing', () => {",
+            "  pm.expect(pm.response.headers.get('X-Request-ID')).to.include('newman-trace-');",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "POST /auth/register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{backendUrl}}/api/v1/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}" }
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('email', 'newman-' + Date.now() + '@example.com');"
+            ] } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('returns a token', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+              "pm.collectionVariables.set('token', body.token);"
+            ] } }
+          ]
+        },
+        {
+          "name": "POST /auth/register (duplicate email -> 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{backendUrl}}/api/v1/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 409', () => pm.response.to.have.status(409));"
+          ] } }]
+        },
+        {
+          "name": "POST /auth/login (valid)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{backendUrl}}/api/v1/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('returns a token', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+            "pm.collectionVariables.set('token', body.token);"
+          ] } }]
+        },
+        {
+          "name": "POST /auth/login (wrong password -> 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{backendUrl}}/api/v1/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"totally-wrong-password\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "POST /portfolios (valid weights)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/portfolios",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Newman Test Portfolio\",\n  \"holdings\": [\n    {\"ticker\": \"AAPL\", \"weight\": 0.5},\n    {\"ticker\": \"MSFT\", \"weight\": 0.5}\n  ]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 201', () => pm.response.to.have.status(201));",
+            "const body = pm.response.json();",
+            "pm.test('has 2 holdings', () => pm.expect(body.holdings).to.have.lengthOf(2));",
+            "pm.collectionVariables.set('portfolioId', body.id);"
+          ] } }]
+        },
+        {
+          "name": "POST /portfolios (weights don't sum to 1 -> 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/portfolios",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Weights Portfolio\",\n  \"holdings\": [\n    {\"ticker\": \"AAPL\", \"weight\": 0.5},\n    {\"ticker\": \"MSFT\", \"weight\": 0.2}\n  ]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 400', () => pm.response.to.have.status(400));"
+          ] } }]
+        },
+        {
+          "name": "POST /portfolios (no auth -> 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{backendUrl}}/api/v1/portfolios",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Auth Portfolio\",\n  \"holdings\": [{\"ticker\": \"AAPL\", \"weight\": 1.0}]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "GET /portfolios (with auth)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/portfolios"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('is an array containing the created portfolio', () => {",
+            "  pm.expect(body).to.be.an('array');",
+            "  pm.expect(body.some(p => String(p.id) === String(pm.collectionVariables.get('portfolioId')))).to.be.true;",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "GET /portfolios (no auth -> 401)",
+          "request": { "method": "GET", "url": "{{backendUrl}}/api/v1/portfolios" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "GET /portfolios/{id}/analytics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}/analytics"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status is 200 or 502 (quant/network dependent)', () => {",
+            "  pm.expect([200, 502]).to.include(pm.response.code);",
+            "});",
+            "if (pm.response.code === 200) {",
+            "  const body = pm.response.json();",
+            "  pm.test('has sharpe_ratio field', () => pm.expect(body).to.have.property('sharpe_ratio'));",
+            "}"
+          ] } }]
+        },
+        {
+          "name": "GET /portfolios/{id}/analytics (no auth -> 401)",
+          "request": { "method": "GET", "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}/analytics" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "GET /portfolios/{id}/analytics (unknown id -> 404)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/portfolios/999999999/analytics"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 404', () => pm.response.to.have.status(404));"
+          ] } }]
+        },
+        {
+          "name": "POST /backtests (valid)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/backtests",
+            "body": { "mode": "raw", "raw": "{\n  \"portfolio_id\": {{portfolioId}},\n  \"benchmark\": \"SPY\",\n  \"start_date\": \"2025-01-02\",\n  \"end_date\": \"2025-12-31\",\n  \"rebalance_frequency\": \"monthly\",\n  \"cost_bps\": 10,\n  \"initial_capital\": 100000\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 202', () => pm.response.to.have.status(202));",
+            "const body = pm.response.json();",
+            "pm.test('status is queued', () => pm.expect(body.status).to.eql('queued'));",
+            "pm.test('benchmark is uppercased', () => pm.expect(body.benchmark).to.eql('SPY'));",
+            "pm.collectionVariables.set('backtestId', body.id);"
+          ] } }]
+        },
+        {
+          "name": "POST /backtests (unknown portfolio -> 404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/backtests",
+            "body": { "mode": "raw", "raw": "{\n  \"portfolio_id\": 999999999,\n  \"benchmark\": \"SPY\",\n  \"start_date\": \"2025-01-02\",\n  \"end_date\": \"2025-12-31\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 404', () => pm.response.to.have.status(404));"
+          ] } }]
+        },
+        {
+          "name": "POST /backtests (end before start -> 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/backtests",
+            "body": { "mode": "raw", "raw": "{\n  \"portfolio_id\": {{portfolioId}},\n  \"benchmark\": \"SPY\",\n  \"start_date\": \"2025-12-31\",\n  \"end_date\": \"2025-01-02\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 400', () => pm.response.to.have.status(400));"
+          ] } }]
+        },
+        {
+          "name": "POST /backtests (no auth -> 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{backendUrl}}/api/v1/backtests",
+            "body": { "mode": "raw", "raw": "{\n  \"portfolio_id\": {{portfolioId}},\n  \"benchmark\": \"SPY\",\n  \"start_date\": \"2025-01-02\",\n  \"end_date\": \"2025-12-31\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "GET /backtests (with auth)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/backtests"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('contains the created backtest', () => {",
+            "  pm.expect(body.some(b => String(b.id) === String(pm.collectionVariables.get('backtestId')))).to.be.true;",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "GET /backtests (no auth -> 401)",
+          "request": { "method": "GET", "url": "{{backendUrl}}/api/v1/backtests" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "GET /backtests/{id} (before worker runs -> queued)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/backtests/{{backtestId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('is queued with no metrics yet', () => {",
+            "  pm.expect(body.status).to.eql('queued');",
+            "  pm.expect(body.metrics).to.be.null;",
+            "  pm.expect(body.equity_curve).to.have.lengthOf(0);",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "GET /backtests/{id} (no auth -> 401)",
+          "request": { "method": "GET", "url": "{{backendUrl}}/api/v1/backtests/{{backtestId}}" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "GET /backtests/{id} (unknown id -> 404)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/backtests/999999999"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 404', () => pm.response.to.have.status(404));"
+          ] } }]
+        },
+        {
+          "name": "GET /rankings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/rankings?limit=5"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status is 200 or 404 (404 until the scoring worker has run)', () => {",
+            "  pm.expect([200, 404]).to.include(pm.response.code);",
+            "});",
+            "if (pm.response.code === 200) {",
+            "  const body = pm.response.json();",
+            "  pm.test('at most the requested limit', () => pm.expect(body.length).to.be.at.most(5));",
+            "  pm.test('ranked best composite first', () => {",
+            "    const scores = body.map(r => r.composite_score);",
+            "    pm.expect(scores).to.eql(scores.slice().sort((a, b) => b - a));",
+            "  });",
+            "  pm.test('rank starts at 1', () => pm.expect(body[0].rank).to.eql(1));",
+            "}"
+          ] } }]
+        },
+        {
+          "name": "GET /rankings (limit over max -> 422)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/rankings?limit=500"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 422', () => pm.response.to.have.status(422));"
+          ] } }]
+        },
+        {
+          "name": "GET /rankings (no auth -> 401)",
+          "request": { "method": "GET", "url": "{{backendUrl}}/api/v1/rankings" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "PUT /portfolios/{id} (replace name and holdings)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Newman Test Portfolio (updated)\",\n  \"holdings\": [\n    {\"ticker\": \"NVDA\", \"weight\": 0.7},\n    {\"ticker\": \"XOM\", \"weight\": 0.3}\n  ]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('name updated', () => pm.expect(body.name).to.eql('Newman Test Portfolio (updated)'));",
+            "pm.test('holdings fully replaced', () => {",
+            "  const tickers = body.holdings.map(h => h.ticker).sort();",
+            "  pm.expect(tickers).to.eql(['NVDA', 'XOM']);",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "PUT /portfolios/{id} (bad weights -> 400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Bad Update\",\n  \"holdings\": [{\"ticker\": \"NVDA\", \"weight\": 0.3}]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 400', () => pm.response.to.have.status(400));"
+          ] } }]
+        },
+        {
+          "name": "PUT /portfolios/{id} (unknown id -> 404)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{backendUrl}}/api/v1/portfolios/999999999",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Nope\",\n  \"holdings\": [{\"ticker\": \"NVDA\", \"weight\": 1.0}]\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 404', () => pm.response.to.have.status(404));"
+          ] } }]
+        },
+        {
+          "name": "DELETE /portfolios/{id} (no auth -> 401)",
+          "request": { "method": "DELETE", "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 401', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "DELETE /portfolios/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 204', () => pm.response.to.have.status(204));"
+          ] } }]
+        },
+        {
+          "name": "GET /portfolios (deleted one is gone)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/portfolios"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('deleted portfolio no longer listed', () => {",
+            "  pm.expect(body.some(p => String(p.id) === String(pm.collectionVariables.get('portfolioId')))).to.be.false;",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "DELETE /portfolios/{id} (already deleted -> 404)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 404', () => pm.response.to.have.status(404));"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "Quant Service",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": { "method": "GET", "url": "{{quantUrl}}/healthz" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));"
+          ] } }]
+        },
+        {
+          "name": "POST /analytics/portfolio (valid)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{quantUrl}}/analytics/portfolio",
+            "body": { "mode": "raw", "raw": "{\n  \"holdings\": [\n    {\"ticker\": \"AAPL\", \"weight\": 0.6},\n    {\"ticker\": \"MSFT\", \"weight\": 0.4}\n  ],\n  \"lookback\": \"3mo\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status is 200 or 422 (network dependent)', () => {",
+            "  pm.expect([200, 422]).to.include(pm.response.code);",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "POST /analytics/portfolio (weights don't sum to 1 -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{quantUrl}}/analytics/portfolio",
+            "body": { "mode": "raw", "raw": "{\n  \"holdings\": [\n    {\"ticker\": \"AAPL\", \"weight\": 0.9},\n    {\"ticker\": \"MSFT\", \"weight\": 0.9}\n  ],\n  \"lookback\": \"3mo\"\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status 422', () => pm.response.to.have.status(422));"
+          ] } }]
+        },
+        {
+          "name": "GET /market/quotes",
+          "request": { "method": "GET", "url": "{{quantUrl}}/market/quotes?tickers=AAPL,MSFT" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status is 200 or 503 (network dependent)', () => {",
+            "  pm.expect([200, 503]).to.include(pm.response.code);",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "GET /market/history",
+          "request": { "method": "GET", "url": "{{quantUrl}}/market/history?tickers=AAPL&period=1mo&interval=1d" },
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('status is 200 or 503 (network dependent)', () => {",
+            "  pm.expect([200, 503]).to.include(pm.response.code);",
+            "});"
+          ] } }]
+        }
+      ]
+    }
+  ]
+}
