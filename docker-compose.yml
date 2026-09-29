@@ -10,12 +10,26 @@ services:
       - "15432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # One-shot: applies backend/migrations/*.sql via backend/migrate.py,
+  # tracked in schema_migrations so reruns only apply what's new. Replaces
+  # postgres's docker-entrypoint-initdb.d, which only ever runs once against
+  # a brand-new empty volume and leaves every other environment (a restart,
+  # a second developer, staging) with no record of what's applied.
+  migrate:
+    build: ./backend
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    entrypoint: ["python", "migrate.py"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -37,15 +51,90 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       QUANT_SERVICE_URL: http://quant:8000
       REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8081:8081"
+    # /readyz, not /healthz: readiness verifies it can actually reach
+    # Postgres, so a container that is up but cut off from its database is
+    # reported unhealthy instead of silently accepting traffic.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/readyz').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       quant:
         condition: service_started
       redis:
         condition: service_started
+
+  price-ingestor:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    command: ["-m", "worker.ingest_prices", "--interval-seconds", "86400"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  fundamentals-ingestor:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    command: ["-m", "worker.ingest_fundamentals", "--interval-seconds", "86400"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Scores depend on prices and fundamentals already being present, so this
+  # runs on a slower cadence than the ingestors feeding it.
+  score-calculator:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    command: ["-m", "worker.calculate_scores", "--interval-seconds", "86400"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  backtest-worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    command: ["-m", "worker.run_pending_backtests", "--poll-interval", "30"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
 volumes:
   pgdata:

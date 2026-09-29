@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  # Test-only values. Real secrets come from the deploy environment's secrets
+  # manager, never from a checked-in file (see scripts/generate_env.py).
+  POSTGRES_USER: portfolio_user
+  POSTGRES_PASSWORD: ci-postgres-password
+  POSTGRES_DB: portfolio
+  JWT_SECRET: ci-only-jwt-secret-long-enough-to-pass-validation
+  PGPASSWORD: ci-postgres-password
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: portfolio_user
+          POSTGRES_PASSWORD: ci-postgres-password
+          POSTGRES_DB: portfolio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U portfolio_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://portfolio_user:ci-postgres-password@localhost:5432/portfolio
+      TEST_DATABASE_URL: postgresql://portfolio_user:ci-postgres-password@localhost:5432/portfolio
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          pip install pytest respx
+
+      - name: Apply migrations
+        working-directory: backend
+        run: python migrate.py
+
+      - name: Verify no migrations left pending
+        working-directory: backend
+        run: python migrate.py --status
+
+      - name: Backend tests
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -m pytest app test_migrate.py -v
+
+  quant:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install quant dependencies
+        working-directory: quant
+        run: pip install -r requirements-dev.txt
+
+      - name: Quant tests
+        working-directory: quant
+        env:
+          PYTHONPATH: .
+        run: python -m pytest app -v
+
+  worker-and-engine:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: portfolio_user
+          POSTGRES_PASSWORD: ci-postgres-password
+          POSTGRES_DB: portfolio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U portfolio_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://portfolio_user:ci-postgres-password@localhost:5432/portfolio
+      TEST_DATABASE_URL: postgresql://portfolio_user:ci-postgres-password@localhost:5432/portfolio
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The C++ engine has to exist before the worker tests run: several of
+      # them shell out to the real binary rather than mocking it.
+      - name: Build the C++ backtest engine
+        run: make -C backtest
+
+      - name: C++ engine unit tests
+        run: make -C backtest test
+
+      - name: Install worker/screener dependencies
+        run: |
+          pip install -r worker/requirements.txt
+          pip install -r screener/requirements.txt
+          pip install pytest
+
+      - name: Apply migrations
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          python migrate.py
+
+      # backtest/fundamentals/tests is its own suite (the EDGAR adapters) and
+      # is not under backtest/tests — it needs naming explicitly or it silently
+      # never runs.
+      - name: Worker, backtest, fundamentals and screener tests
+        run: python -m pytest worker backtest/tests backtest/fundamentals/tests screener/tests -v
+
+  api-contract:
+    runs-on: ubuntu-latest
+    needs: [backend, quant]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: portfolio_user
+          POSTGRES_PASSWORD: ci-postgres-password
+          POSTGRES_DB: portfolio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U portfolio_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://portfolio_user:ci-postgres-password@localhost:5432/portfolio
+      QUANT_SERVICE_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt -r quant/requirements.txt
+          npm install -g newman
+
+      - name: Apply migrations
+        working-directory: backend
+        run: python migrate.py
+
+      # REDIS_URL is deliberately unset here: rate limiting fails open
+      # without Redis, so the collection's repeated registrations don't trip
+      # the 5-per-5-minutes register limit mid-run.
+      - name: Start services
+        run: |
+          (cd quant && PYTHONPATH=. python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &)
+          (cd backend && PYTHONPATH=. python -m uvicorn app.main:app --host 127.0.0.1 --port 8081 &)
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/healthz && curl -sf http://127.0.0.1:8081/healthz && break
+            sleep 2
+          done
+
+      - name: Postman/Newman API contract tests
+        run: newman run postman/market_screener.postman_collection.json --reporters cli
