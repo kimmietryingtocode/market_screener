@@ -18,4 +18,7 @@ COPY worker /app/worker
 COPY screener /app/screener
 
 ENV PYTHONPATH=/app
-ENTRYPOINT ["python", "-m", "worker.entrypoint"]
+ENTRYPOINT ["python"]
+# Default keeps the original single-job behavior; docker-compose overrides
+# `command` per service to run the ingestion or backtest poller loops instead.
+CMD ["-m", "worker.entrypoint"]
