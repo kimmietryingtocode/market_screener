@@ -1,10 +1,11 @@
 """Download and normalize daily market data for the initial stock universe.
 
-Usage:
-    python ingest_prices.py --tickers AAPL,MSFT,NVDA --period 2y
+Usage (from the repo root):
+    python -m screener.ingest_prices --tickers AAPL,MSFT,NVDA --period 2y
 
-The output is intentionally a local CSV snapshot for the first milestone.
-A later database migration can load the same normalized rows into price_bars.
+The output here is a local CSV snapshot. worker/ingest_prices.py reuses
+download_history/normalize_price_bars from this module to instead write
+rows into the price_bars table.
 """
 
 import argparse
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pipeline.data import download_history
+from screener.pipeline.data import download_history
 
 DEFAULT_TICKERS = [
     "AAPL",
