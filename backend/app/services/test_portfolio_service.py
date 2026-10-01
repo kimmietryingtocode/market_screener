@@ -94,6 +94,37 @@ def test_update_portfolio_rejects_bad_weights_without_touching_existing_data(con
 
 
 @requires_db
+def test_update_portfolio_rolls_back_name_and_holdings_on_duplicate_ticker(connection, make_user):
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection,
+        user_id,
+        CreatePortfolioRequest(name="Original", holdings=[HoldingInput(ticker="AAPL", weight=1.0)]),
+    )
+
+    with pytest.raises(ConflictError):
+        portfolio_service.update_portfolio(
+            connection,
+            user_id,
+            portfolio.id,
+            CreatePortfolioRequest(
+                name="Must Roll Back",
+                holdings=[
+                    HoldingInput(ticker="MSFT", weight=0.5),
+                    HoldingInput(ticker="msft", weight=0.5),
+                ],
+            ),
+        )
+
+    unchanged = portfolios_repository.get_owned_portfolio(connection, portfolio.id, user_id)
+    holdings = portfolios_repository.get_holdings_for_owned_portfolio(
+        connection, portfolio.id, user_id
+    )
+    assert unchanged.name == "Original"
+    assert [h.ticker for h in holdings] == ["AAPL"]
+
+
+@requires_db
 def test_update_portfolio_for_another_users_portfolio_raises_not_found(connection, make_user):
     owner_id = make_user()
     attacker_id = make_user()

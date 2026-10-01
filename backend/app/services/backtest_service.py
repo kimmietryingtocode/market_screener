@@ -17,20 +17,26 @@ class BacktestDetail(NamedTuple):
 def create_backtest(connection: Any, user_id: int, payload: CreateBacktestRequest) -> BacktestRow:
     if payload.end_date < payload.start_date:
         raise ValidationError("end_date cannot be before start_date")
-    if not portfolios_repository.exists_for_user(connection, payload.portfolio_id, user_id):
-        raise NotFoundError("portfolio not found")
+    with connection.transaction():
+        if not portfolios_repository.exists_for_user(connection, payload.portfolio_id, user_id):
+            raise NotFoundError("portfolio not found")
 
-    return backtests_repository.insert_backtest(
-        connection,
-        user_id=user_id,
-        portfolio_id=payload.portfolio_id,
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        benchmark=payload.benchmark.upper(),
-        rebalance_frequency=payload.rebalance_frequency,
-        cost_bps=payload.cost_bps,
-        initial_capital=payload.initial_capital,
-    )
+        backtest = backtests_repository.insert_backtest(
+            connection,
+            user_id=user_id,
+            portfolio_id=payload.portfolio_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            benchmark=payload.benchmark.upper(),
+            rebalance_frequency=payload.rebalance_frequency,
+            cost_bps=payload.cost_bps,
+            initial_capital=payload.initial_capital,
+        )
+        if backtests_repository.snapshot_portfolio_holdings(
+            connection, backtest.id, payload.portfolio_id
+        ) == 0:
+            raise ValidationError("portfolio has no holdings")
+        return backtest
 
 
 def list_backtests(connection: Any, user_id: int) -> list[BacktestRow]:

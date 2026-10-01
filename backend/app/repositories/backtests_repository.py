@@ -76,6 +76,19 @@ def insert_backtest(
         return BacktestRow(*cursor.fetchone())
 
 
+def snapshot_portfolio_holdings(connection: Any, backtest_id: int, portfolio_id: int) -> int:
+    """Copy the submitted portfolio into immutable inputs for this run."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO backtest_holdings (backtest_id, ticker, weight)
+            SELECT %s, ticker, weight FROM holdings WHERE portfolio_id = %s
+            """,
+            (backtest_id, portfolio_id),
+        )
+        return cursor.rowcount
+
+
 def list_backtests(connection: Any, user_id: int) -> list[BacktestRow]:
     with connection.cursor() as cursor:
         cursor.execute(

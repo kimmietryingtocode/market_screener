@@ -17,15 +17,21 @@ import logging
 import math
 import os
 import time
+from datetime import date
 from typing import Any
 
 import pandas as pd
 import psycopg
 
 from screener.ingest_prices import DEFAULT_TICKERS, normalize_price_bars, parse_tickers
-from screener.pipeline.data import download_history
+from backtest.calendar import nyse_sessions
+from screener.pipeline.data import download_history, download_history_range
 
 logger = logging.getLogger(__name__)
+
+
+class PriceCoverageError(ValueError):
+    """The requested portfolio cannot be priced for its full test period."""
 
 
 def validate(normalized: pd.DataFrame) -> None:
@@ -101,6 +107,79 @@ def ingest(connection: Any, tickers: list[str], period: str) -> int:
     normalized = normalize_price_bars(data)
     validate(normalized)
     return upsert_price_bars(connection, normalized)
+
+
+def ingest_range(connection: Any, tickers: list[str], start: date, end: date) -> int:
+    data = download_history_range(tickers, start, end)
+    normalized = normalize_price_bars(data)
+    validate(normalized)
+    return upsert_price_bars(connection, normalized)
+
+
+def _missing_sessions(
+    connection: Any, tickers: list[str], start: date, end: date
+) -> dict[str, list[date]]:
+    expected = {stamp.date() for stamp in nyse_sessions(start, end)["date"]}
+    if len(expected) < 2:
+        raise PriceCoverageError(
+            f"The requested period {start} through {end} has fewer than two trading sessions."
+        )
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT s.ticker, p.trading_date
+            FROM securities s
+            LEFT JOIN price_bars p
+              ON p.security_id = s.id AND p.trading_date BETWEEN %s AND %s
+            WHERE s.ticker = ANY(%s)
+            """,
+            (start, end, tickers),
+        )
+        available: dict[str, set[date]] = {ticker: set() for ticker in tickers}
+        for ticker, trading_date in cursor.fetchall():
+            if trading_date is not None:
+                available[ticker].add(trading_date)
+    return {
+        ticker: sorted(expected - available[ticker])
+        for ticker in tickers
+        if expected - available[ticker]
+    }
+
+
+def ensure_backtest_price_history(connection: Any, backtest_id: int) -> None:
+    """Fetch missing selected-ticker history, then require full NYSE coverage."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT benchmark, start_date, end_date FROM backtests WHERE id = %s",
+            (backtest_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError(f"no backtest with id {backtest_id}")
+        benchmark, start, end = row
+        cursor.execute(
+            "SELECT ticker FROM backtest_holdings WHERE backtest_id = %s ORDER BY ticker",
+            (backtest_id,),
+        )
+        tickers = [ticker for (ticker,) in cursor.fetchall()]
+    if not tickers:
+        raise ValueError(f"backtest {backtest_id} has no saved holding snapshot")
+
+    needed = list(dict.fromkeys([*tickers, benchmark]))
+    missing = _missing_sessions(connection, needed, start, end)
+    if missing:
+        ingest_range(connection, sorted(missing), start, end)
+        missing = _missing_sessions(connection, needed, start, end)
+    if missing:
+        details = "; ".join(
+            f"{ticker}: {len(days)} missing session(s), first {days[0]}, last {days[-1]}"
+            for ticker, days in sorted(missing.items())
+        )
+        raise PriceCoverageError(
+            f"Incomplete price history for requested period {start} through {end}. {details}. "
+            "Choose a supported period or ticker; the backtest dates were not shortened."
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

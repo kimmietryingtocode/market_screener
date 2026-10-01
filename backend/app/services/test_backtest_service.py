@@ -30,6 +30,38 @@ def test_create_backtest_for_a_portfolio_the_user_owns(connection, make_user):
 
     assert backtest.status == "queued"
     assert backtest.benchmark == "SPY"  # uppercased
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT ticker, weight FROM backtest_holdings WHERE backtest_id = %s",
+            (backtest.id,),
+        )
+        assert [(ticker, float(weight)) for ticker, weight in cursor.fetchall()] == [("AAPL", 1.0)]
+
+
+@requires_db
+def test_backtest_keeps_original_holdings_after_portfolio_edit(connection, make_user):
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection,
+        user_id,
+        CreatePortfolioRequest(name="Frozen", holdings=[HoldingInput(ticker="AAPL", weight=1.0)]),
+    )
+    backtest = backtest_service.create_backtest(connection, user_id, _request(portfolio.id))
+
+    portfolio_service.update_portfolio(
+        connection,
+        user_id,
+        portfolio.id,
+        CreatePortfolioRequest(name="Edited", holdings=[HoldingInput(ticker="MSFT", weight=1.0)]),
+    )
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT ticker, weight FROM backtest_holdings WHERE backtest_id = %s",
+            (backtest.id,),
+        )
+        snapshot = [(ticker, float(weight)) for ticker, weight in cursor.fetchall()]
+    assert snapshot == [("AAPL", 1.0)]
 
 
 @requires_db

@@ -12,9 +12,12 @@ import unittest
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+import pandas as pd
 
 from backtest.calendar import nyse_sessions
-from worker import build_targets, run_pending_backtests
+from worker import build_targets, ingest_prices, run_pending_backtests
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -41,6 +44,7 @@ ENGINE_PATH = REPO_ROOT / "backtest" / "build" / "portfolio_backtest"
 START_DATE = date(2025, 1, 2)
 END_DATE = date(2025, 2, 28)
 TICKERS = ("TAAPL", "TMSFT", "TBENCH")
+TEST_ONLY_TICKERS = (*TICKERS, "TCHANGED", "TOTHER")
 
 
 @unittest.skipUnless(DB_AVAILABLE, "TEST_DATABASE_URL not set or unreachable")
@@ -97,7 +101,7 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
             # before the securities they reference, or the securities
             # delete fails and leaves everything orphaned for the next test.
             cursor.execute("DELETE FROM backtests WHERE portfolio_id = %s", (self.portfolio_id,))
-            cursor.execute("DELETE FROM securities WHERE ticker = ANY(%s)", (list(TICKERS),))
+            cursor.execute("DELETE FROM securities WHERE ticker = ANY(%s)", (list(TEST_ONLY_TICKERS),))
             cursor.execute("DELETE FROM users WHERE id = %s", (self.user_id,))
 
     def _create_backtest(self, *, parameters: dict | None = None, **overrides) -> int:
@@ -129,7 +133,15 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
                     _json.dumps(parameters or {}),
                 ),
             )
-            return cursor.fetchone()[0]
+            backtest_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO backtest_holdings (backtest_id, ticker, weight)
+                SELECT %s, ticker, weight FROM holdings WHERE portfolio_id = %s
+                """,
+                (backtest_id, self.portfolio_id),
+            )
+            return backtest_id
 
     def test_generate_targets_from_portfolio_expands_holdings_across_signals(self) -> None:
         backtest_id = self._create_backtest()
@@ -143,14 +155,102 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
             )
             rows = cursor.fetchall()
 
-        # One monthly signal (Jan 31 2025) falls in this window -> 2 holdings x 1 signal.
-        self.assertEqual(row_count, 2)
-        self.assertEqual(len(rows), 2)
+        # Initial purchase plus one monthly rebalance -> 2 holdings x 2 dates.
+        self.assertEqual(row_count, 4)
+        self.assertEqual(len(rows), 4)
         tickers = {r[0] for r in rows}
         self.assertEqual(tickers, {"TAAPL", "TMSFT"})
         for _, weight, provenance in rows:
             self.assertIn(float(weight), (0.6, 0.4))
-            self.assertEqual(provenance, "portfolio-holdings")
+            self.assertEqual(provenance, "saved-backtest-holdings")
+
+    def test_generate_targets_invests_on_first_session(self) -> None:
+        backtest_id = self._create_backtest()
+        build_targets.generate_targets_from_portfolio(self.connection, backtest_id)
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT min(execution_date) FROM backtest_targets WHERE backtest_id = %s",
+                (backtest_id,),
+            )
+            first_execution = cursor.fetchone()[0]
+
+        self.assertEqual(first_execution, START_DATE)
+
+    def test_generate_targets_uses_snapshot_after_portfolio_is_edited(self) -> None:
+        backtest_id = self._create_backtest()
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM holdings WHERE portfolio_id = %s", (self.portfolio_id,))
+            cursor.execute(
+                "INSERT INTO holdings (portfolio_id, ticker, weight) VALUES (%s, 'TCHANGED', 1)",
+                (self.portfolio_id,),
+            )
+
+        build_targets.generate_targets_from_portfolio(self.connection, backtest_id)
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT s.ticker FROM backtest_targets t
+                JOIN securities s ON s.id = t.security_id
+                WHERE t.backtest_id = %s ORDER BY s.ticker
+                """,
+                (backtest_id,),
+            )
+            tickers = [ticker for (ticker,) in cursor.fetchall()]
+        self.assertEqual(tickers, ["TAAPL", "TMSFT"])
+
+    def test_missing_history_is_fetched_for_selected_ticker_outside_starter_list(self) -> None:
+        backtest_id = self._create_backtest()
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM backtest_holdings WHERE backtest_id = %s", (backtest_id,))
+            cursor.execute(
+                "INSERT INTO backtest_holdings (backtest_id, ticker, weight) VALUES (%s, 'TOTHER', 1)",
+                (backtest_id,),
+            )
+
+        fetched: list[str] = []
+
+        def fake_ingest_range(connection, tickers, start, end):
+            fetched.extend(tickers)
+            sessions = nyse_sessions(start, end)["date"]
+            frame = pd.DataFrame([
+                {
+                    "ticker": ticker,
+                    "trading_date": session.date(),
+                    "open": 100.0,
+                    "high": 100.0,
+                    "low": 100.0,
+                    "close": 100.0,
+                    "volume": 1_000,
+                }
+                for ticker in tickers
+                for session in sessions
+            ])
+            return ingest_prices.upsert_price_bars(connection, frame)
+
+        with patch("worker.ingest_prices.ingest_range", side_effect=fake_ingest_range):
+            ingest_prices.ensure_backtest_price_history(self.connection, backtest_id)
+
+        self.assertEqual(fetched, ["TOTHER"])
+
+    def test_incomplete_history_fails_without_shortening_requested_dates(self) -> None:
+        backtest_id = self._create_backtest()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM price_bars
+                WHERE security_id = %s AND trading_date = %s
+                """,
+                (self.security_ids["TAAPL"], START_DATE),
+            )
+
+        with patch("worker.ingest_prices.ingest_range", return_value=0):
+            with self.assertRaisesRegex(
+                ingest_prices.PriceCoverageError,
+                rf"{START_DATE} through {END_DATE}.*TAAPL: 1 missing session",
+            ):
+                ingest_prices.ensure_backtest_price_history(self.connection, backtest_id)
 
     def test_generate_targets_is_idempotent(self) -> None:
         backtest_id = self._create_backtest()

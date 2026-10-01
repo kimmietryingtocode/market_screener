@@ -1,11 +1,11 @@
 """Poll `backtests` for queued rows and run each one through the C++ engine.
 
 This is the piece the architecture doc calls "wrap the engine in the Python
-worker" plus "connect PostgreSQL": for each queued backtest it builds a
-target schedule from the source portfolio, exports prices/targets CSVs,
-invokes worker/entrypoint.py's file-based job contract, and imports the
-result back into PostgreSQL. One job's failure is recorded on that row and
-does not stop the others.
+worker" plus "connect PostgreSQL": for each queued backtest it verifies the
+requested price coverage, builds a target schedule from the frozen holdings,
+exports prices/targets CSVs, invokes worker/entrypoint.py's file-based job
+contract, and imports the result back into PostgreSQL. One job's failure is
+recorded on that row and does not stop the others.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import psycopg
 
 from worker.build_targets import generate_targets_from_portfolio
 from worker.entrypoint import execute_job
+from worker.ingest_prices import ensure_backtest_price_history
 from worker.persistence import export_prices_csv, export_targets_csv, import_job_result, mark_running
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ def run_one(connection: Any, backtest_id: int, *, engine: Path, output_root: Pat
         benchmark, start_date, end_date, parameters = row
         parameters = parameters or {}
 
+    ensure_backtest_price_history(connection, backtest_id)
     generate_targets_from_portfolio(connection, backtest_id)
 
     job_id = f"backtest-{backtest_id}-{uuid.uuid4().hex[:8]}"
