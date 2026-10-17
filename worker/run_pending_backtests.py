@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ENGINE = REPO_ROOT / "backtest" / "build" / "portfolio_backtest"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data" / "backtest" / "jobs"
+# Longer than any legitimate run; a shorter lease would hand a slow job to a
+# second worker while the first is still working on it.
+CLAIM_TIMEOUT_SECONDS = 1800
 
 
 def _fail(connection: Any, backtest_id: int, message: str) -> None:
@@ -110,24 +113,80 @@ def run_one(connection: Any, backtest_id: int, *, engine: Path, output_root: Pat
     return result
 
 
+def claim_next(connection: Any) -> int | None:
+    """Atomically take ownership of one queued backtest, or return None.
+
+    Selecting the queued ids and only marking them running later leaves a
+    window — seconds wide, since the schedule is built and the CSVs exported
+    in between — where a second worker sees the same row as queued. That is
+    not merely duplicated effort: generate_targets_from_portfolio clears and
+    rewrites the target schedule, so a second worker deleting those rows
+    while the first exports its CSV produces a backtest that holds nothing
+    and reports a flat line as a successful result.
+
+    FOR UPDATE SKIP LOCKED hands each row to exactly one worker, and the
+    status flips before any target rows are touched.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE backtests SET status = 'running', claimed_at = now()
+            WHERE id = (
+                SELECT id FROM backtests
+                WHERE status = 'queued'
+                ORDER BY created_at
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            RETURNING id
+            """
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+
+def requeue_abandoned(connection: Any, timeout_seconds: float = CLAIM_TIMEOUT_SECONDS) -> list[int]:
+    """Return backtests whose claim has expired to the queue.
+
+    Claiming atomically means a worker that is killed mid-job leaves its row
+    'running' with nothing to retry it. The claim is therefore a lease: held
+    past the timeout, the row is assumed abandoned. The timeout must exceed
+    the longest legitimate run, or a slow job gets picked up twice.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE backtests SET status = 'queued', claimed_at = NULL
+            WHERE status = 'running'
+              AND claimed_at IS NOT NULL
+              AND claimed_at < now() - make_interval(secs => %s)
+            RETURNING id
+            """,
+            (timeout_seconds,),
+        )
+        requeued = [row[0] for row in cursor.fetchall()]
+    if requeued:
+        logger.warning("requeued abandoned backtests: %s", requeued)
+    return requeued
+
+
 def run_once(
     connection: Any,
     *,
     engine: Path = DEFAULT_ENGINE,
     output_root: Path = DEFAULT_OUTPUT_ROOT,
 ) -> list[int]:
-    """Process every currently-queued backtest once. Returns the ids attempted."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT id FROM backtests WHERE status = 'queued' ORDER BY created_at")
-        backtest_ids = [row[0] for row in cursor.fetchall()]
-
-    for backtest_id in backtest_ids:
+    """Drain the queue once. Returns the ids this worker claimed."""
+    requeue_abandoned(connection)
+    processed: list[int] = []
+    while (backtest_id := claim_next(connection)) is not None:
+        processed.append(backtest_id)
         try:
             run_one(connection, backtest_id, engine=engine, output_root=output_root)
         except Exception as exc:  # noqa: BLE001 - one bad job must not stop the poller
             logger.exception("backtest %s failed", backtest_id)
             _fail(connection, backtest_id, str(exc))
-    return backtest_ids
+    return processed
 
 
 def main(argv: list[str] | None = None) -> int:

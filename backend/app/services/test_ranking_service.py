@@ -104,6 +104,49 @@ def test_unscored_methodology_raises_not_found_rather_than_empty_list(connection
 
 
 @requires_db
+def test_two_methodology_versions_on_one_date_do_not_mix(connection, scored_universe):
+    """Regression: filtering on score_date alone returned every version
+    scored that day, so each ticker appeared twice and scores from different
+    methodologies were ranked against each other. Running a new version
+    alongside the old one is normal, so this must resolve to one version."""
+    tickers = scored_universe
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, ticker FROM securities WHERE ticker = ANY(%s)", (tickers,))
+        ids = {ticker: sid for sid, ticker in cursor.fetchall()}
+        for ticker, composite in zip(tickers, [99.0, 98.0, 97.0]):
+            cursor.execute(
+                """INSERT INTO scores (security_id, score_date, momentum_score, fundamental_score,
+                                       composite_score, methodology_version)
+                   VALUES (%s, %s, 50, 50, %s, %s)""",
+                (ids[ticker], date.today(), composite, f"{METHODOLOGY}-next"),
+            )
+
+    rows = ranking_service.get_rankings(connection, limit=50)
+    mine = [r for r in rows if r.ticker in tickers]
+
+    assert len({r.ticker for r in mine}) == len(mine), "a ticker appeared more than once"
+    assert len({r.methodology_version for r in mine}) == 1, "ranking mixed methodology versions"
+
+
+@requires_db
+def test_an_explicit_methodology_version_is_honoured(connection, scored_universe):
+    tickers = scored_universe
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, ticker FROM securities WHERE ticker = ANY(%s)", (tickers,))
+        ids = {ticker: sid for sid, ticker in cursor.fetchall()}
+        cursor.execute(
+            """INSERT INTO scores (security_id, score_date, momentum_score, fundamental_score,
+                                   composite_score, methodology_version)
+               VALUES (%s, %s, 50, 50, 99, %s)""",
+            (ids[tickers[0]], date.today(), f"{METHODOLOGY}-next"),
+        )
+
+    rows = ranking_service.get_rankings(connection, limit=50, methodology_version=METHODOLOGY)
+
+    assert all(r.methodology_version == METHODOLOGY for r in rows)
+
+
+@requires_db
 def test_scores_come_back_as_floats_not_decimals(connection, scored_universe):
     """NUMERIC columns arrive as Decimal from psycopg; the repository casts
     them so callers get what RankingRow's type hints promise."""

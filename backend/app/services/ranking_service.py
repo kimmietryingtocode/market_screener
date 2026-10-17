@@ -23,14 +23,15 @@ def get_rankings(
     if limit < 1 or limit > MAX_LIMIT:
         raise ValidationError(f"limit must be between 1 and {MAX_LIMIT}")
 
-    score_date = scores_repository.latest_score_date(connection, methodology_version)
-    if score_date is None:
+    run = scores_repository.latest_run(connection, methodology_version)
+    if run is None:
         raise NotFoundError("no scores have been calculated yet")
+    score_date, resolved_version = run
 
     return scores_repository.top_ranked(
         connection,
         score_date=score_date,
+        methodology_version=resolved_version,
         limit=limit,
         sector=sector,
-        methodology_version=methodology_version,
     )

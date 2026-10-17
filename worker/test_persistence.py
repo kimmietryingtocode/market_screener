@@ -211,6 +211,54 @@ class PersistenceRoundTripTests(unittest.TestCase):
         self.assertAlmostEqual(float(alpha), 0.11 - 0.19)
         self.assertEqual(equity_row_count, 2)
 
+    def test_engine_nan_metrics_are_stored_as_null_not_nan(self) -> None:
+        """Regression: the engine writes `nan` for a Sharpe with zero
+        volatility or a CAGR over zero elapsed time. Postgres NUMERIC accepts
+        NaN and hands it back, and it then serializes as the bare token NaN,
+        which is not valid JSON and which JSON.parse rejects. Undefined must
+        be NULL."""
+        with TemporaryDirectory() as tmp:
+            job_dir = Path(tmp) / "job"
+            job_dir.mkdir()
+            (job_dir / "job_result.json").write_text(json.dumps({
+                "execution_state": "succeeded",
+                "research_outcome": "completed",
+                "publishable": True,
+                "methodology_version": "worker-backtest-v1",
+                "available_at": "2025-01-01T00:00:00Z",
+                "input_hashes": {},
+                "validation_messages": [],
+            }))
+            backtest_dir = job_dir / "backtest"
+            backtest_dir.mkdir()
+            # Exactly what the engine emits for a flat, zero-volatility book.
+            (backtest_dir / "summary.csv").write_text(
+                "metric,portfolio,benchmark\n"
+                "total_return,0,0\n"
+                "cagr,nan,nan\n"
+                "annualized_volatility,0,0\n"
+                "sharpe_ratio,nan,nan\n"
+                "maximum_drawdown,0,0\n"
+            )
+            (backtest_dir / "equity_curve.csv").write_text(
+                "date,portfolio_value,benchmark_value\n2025-01-02,100000,100000\n"
+            )
+
+            persistence.import_job_result(self.connection, self.backtest_id, job_dir)
+
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT sharpe_ratio, annualized_return, alpha_vs_benchmark "
+                    "FROM backtest_results WHERE backtest_id = %s",
+                    (self.backtest_id,),
+                )
+                sharpe, annualized, alpha = cursor.fetchone()
+
+        self.assertIsNone(sharpe, "NaN sharpe must be stored as NULL")
+        self.assertIsNone(annualized, "NaN cagr must be stored as NULL")
+        # alpha is derived from two NaN cagrs, so it must not be fabricated.
+        self.assertIsNone(alpha)
+
     def test_import_job_result_marks_failed_jobs_without_touching_results(self) -> None:
         with TemporaryDirectory() as tmp:
             job_dir = Path(tmp) / "job"

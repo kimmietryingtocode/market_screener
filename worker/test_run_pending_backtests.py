@@ -173,6 +173,74 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
         processed = run_pending_backtests.run_once(self.connection)
         self.assertEqual(processed, [])
 
+    def test_a_queued_backtest_is_claimed_by_only_one_worker(self) -> None:
+        """Regression: two workers could both see the same queued row, and
+        the second one rewriting the target schedule while the first exported
+        its CSV would silently produce a backtest holding nothing."""
+        backtest_id = self._create_backtest()
+        other_worker = psycopg.connect(TEST_DATABASE_URL, autocommit=True)
+        self.addCleanup(other_worker.close)
+
+        first = run_pending_backtests.claim_next(self.connection)
+        second = run_pending_backtests.claim_next(other_worker)
+
+        self.assertEqual(first, backtest_id)
+        self.assertIsNone(second, "a second worker must not claim the same row")
+
+    def test_claiming_flips_status_before_any_targets_are_touched(self) -> None:
+        """The claim has to be visible immediately, otherwise the window it
+        closes is still open."""
+        backtest_id = self._create_backtest()
+
+        run_pending_backtests.claim_next(self.connection)
+
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT status FROM backtests WHERE id = %s", (backtest_id,))
+            self.assertEqual(cursor.fetchone()[0], "running")
+            cursor.execute(
+                "SELECT count(*) FROM backtest_targets WHERE backtest_id = %s", (backtest_id,)
+            )
+            self.assertEqual(cursor.fetchone()[0], 0)
+
+    def test_claim_returns_none_when_the_queue_is_empty(self) -> None:
+        self.assertIsNone(run_pending_backtests.claim_next(self.connection))
+
+    def test_an_abandoned_claim_is_returned_to_the_queue(self) -> None:
+        """A worker killed mid-job leaves its row 'running'. Without a lease
+        nothing ever retries it, so claiming atomically would trade a double
+        -run for a permanently stuck job."""
+        backtest_id = self._create_backtest()
+        run_pending_backtests.claim_next(self.connection)
+        # Backdate the claim past its lease.
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE backtests SET claimed_at = now() - interval '2 hours' WHERE id = %s",
+                (backtest_id,),
+            )
+
+        requeued = run_pending_backtests.requeue_abandoned(self.connection)
+
+        self.assertIn(backtest_id, requeued)
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT status, claimed_at FROM backtests WHERE id = %s", (backtest_id,))
+            status, claimed_at = cursor.fetchone()
+        self.assertEqual(status, "queued")
+        self.assertIsNone(claimed_at)
+        # And it is claimable again.
+        self.assertEqual(run_pending_backtests.claim_next(self.connection), backtest_id)
+
+    def test_a_fresh_claim_is_left_alone_by_the_reaper(self) -> None:
+        """The lease must not steal a job that is still legitimately running."""
+        backtest_id = self._create_backtest()
+        run_pending_backtests.claim_next(self.connection)
+
+        requeued = run_pending_backtests.requeue_abandoned(self.connection)
+
+        self.assertNotIn(backtest_id, requeued)
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT status FROM backtests WHERE id = %s", (backtest_id,))
+            self.assertEqual(cursor.fetchone()[0], "running")
+
     def test_run_once_marks_unsupported_frequency_as_failed_without_crashing(self) -> None:
         backtest_id = self._create_backtest(rebalance_frequency="weekly")
         processed = run_pending_backtests.run_once(self.connection)
