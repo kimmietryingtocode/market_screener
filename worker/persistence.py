@@ -125,20 +125,34 @@ def _read_summary(summary_path: Path) -> dict[str, dict[str, float | None]]:
     return metrics
 
 
-def import_job_result(connection: Any, backtest_id: int, job_dir: Path) -> None:
+def import_job_result(
+    connection: Any,
+    backtest_id: int,
+    job_dir: Path,
+    *,
+    coverage_messages: list[dict] | None = None,
+) -> None:
     """Persist a completed worker job's outputs, or record its failure.
 
     `job_dir` is the directory worker/entrypoint.py wrote via `execute_job`
     (contains job_result.json and, on success, a `backtest/` subdirectory
     with the engine's summary/equity_curve CSVs).
+
+    `publishable` is stored alongside the metrics so a client can tell a
+    trusted result from a diagnostic one. It is never inferred from `status`:
+    a job can finish cleanly on incomplete data.
     """
     result = json.loads((job_dir / "job_result.json").read_text())
+    # Coverage findings explain *why* a result isn't publishable, so they
+    # belong next to the engine's own validation output, not just in logs.
+    messages = list(coverage_messages or []) + list(result["validation_messages"])
 
     with connection.cursor() as cursor:
         cursor.execute(
             """
             UPDATE backtests SET
                 research_outcome = %s,
+                publishable = %s,
                 methodology_version = %s,
                 available_at = %s,
                 input_hashes = %s,
@@ -147,10 +161,11 @@ def import_job_result(connection: Any, backtest_id: int, job_dir: Path) -> None:
             """,
             (
                 result["research_outcome"],
+                result["publishable"],
                 result["methodology_version"],
                 result["available_at"],
                 json.dumps(result["input_hashes"]),
-                json.dumps(result["validation_messages"]),
+                json.dumps(messages),
                 backtest_id,
             ),
         )

@@ -25,6 +25,8 @@ class BacktestRow(NamedTuple):
 class BacktestDetailRow(NamedTuple):
     backtest: BacktestRow
     research_outcome: str | None
+    publishable: bool
+    available_at: datetime | None
     validation_messages: list[dict]
 
 
@@ -102,7 +104,7 @@ def get_owned_backtest(connection: Any, backtest_id: int, user_id: int) -> Backt
     with connection.cursor() as cursor:
         cursor.execute(
             f"""
-            SELECT {_COLUMNS}, research_outcome, validation_messages
+            SELECT {_COLUMNS}, research_outcome, publishable, available_at, validation_messages
             FROM backtests WHERE id = %s AND user_id = %s
             """,
             (backtest_id, user_id),
@@ -113,7 +115,9 @@ def get_owned_backtest(connection: Any, backtest_id: int, user_id: int) -> Backt
         return BacktestDetailRow(
             backtest=BacktestRow(*row[:9]),
             research_outcome=row[9],
-            validation_messages=row[10] or [],
+            publishable=bool(row[10]),
+            available_at=row[11],
+            validation_messages=row[12] or [],
         )
 
 

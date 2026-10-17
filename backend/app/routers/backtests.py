@@ -58,6 +58,8 @@ def get_backtest(
     return BacktestDetailResponse(
         **detail.backtest._asdict(),
         research_outcome=detail.research_outcome,
+        publishable=detail.publishable,
+        available_at=detail.available_at,
         validation_messages=detail.validation_messages,
         metrics=BacktestMetrics(**detail.metrics._asdict()) if detail.metrics else None,
         equity_curve=[EquityCurvePoint(**p._asdict()) for p in detail.equity_curve],
