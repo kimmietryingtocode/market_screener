@@ -21,11 +21,15 @@ class AnalyticsRequest(BaseModel):
 
 
 class AnalyticsResponse(BaseModel):
-    annualized_return: float
-    volatility: float
-    sharpe_ratio: float
-    max_drawdown: float
+    # Optional because a metric can be genuinely uncomputable (a wiped-out
+    # portfolio has no annual rate). null says so; NaN would be invalid JSON.
+    annualized_return: Optional[float] = None
+    volatility: Optional[float] = None
+    sharpe_ratio: Optional[float] = None
+    max_drawdown: Optional[float] = None
+    total_return: Optional[float] = None
     lookback: str
+    observations: Optional[int] = None
     extra: Optional[dict[str, float]] = None
 
 
