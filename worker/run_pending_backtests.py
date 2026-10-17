@@ -22,6 +22,7 @@ from typing import Any
 
 import psycopg
 
+from worker import coverage
 from worker.build_targets import generate_targets_from_portfolio
 from worker.entrypoint import execute_job
 from worker.persistence import export_prices_csv, export_targets_csv, import_job_result, mark_running
@@ -80,6 +81,14 @@ def run_one(connection: Any, backtest_id: int, *, engine: Path, output_root: Pat
 
         mark_running(connection, backtest_id, job_id)
 
+        # Grade the inputs before running, not after. A job that exits zero
+        # only proves the engine didn't crash; whether the data was actually
+        # there is a separate question, and it decides whether this result is
+        # publishable or merely diagnostic.
+        report = coverage.assess(connection, backtest_id)
+        if report.research_outcome == "blocked":
+            logger.warning("backtest %s is blocked on missing data: %s", backtest_id, report.messages)
+
         job_parameters = {
             "prices": str(prices_path),
             "targets": str(targets_path),
@@ -87,8 +96,8 @@ def run_one(connection: Any, backtest_id: int, *, engine: Path, output_root: Pat
             "benchmark": benchmark,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
-            "research_outcome": "completed",
-            "available_at": f"{end_date.isoformat()}T00:00:00Z",
+            "research_outcome": report.research_outcome,
+            "available_at": report.available_at or f"{end_date.isoformat()}T00:00:00Z",
         }
         if "cost_bps" in parameters:
             job_parameters["cost_bps"] = parameters["cost_bps"]
@@ -97,7 +106,7 @@ def run_one(connection: Any, backtest_id: int, *, engine: Path, output_root: Pat
 
         result = execute_job(job_id, "backtest", job_parameters, output_root)
 
-    import_job_result(connection, backtest_id, output_root / job_id)
+    import_job_result(connection, backtest_id, output_root / job_id, coverage_messages=report.messages)
     return result
 
 

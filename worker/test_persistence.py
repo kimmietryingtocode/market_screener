@@ -162,6 +162,7 @@ class PersistenceRoundTripTests(unittest.TestCase):
             (job_dir / "job_result.json").write_text(json.dumps({
                 "execution_state": "succeeded",
                 "research_outcome": "completed",
+                "publishable": True,
                 "methodology_version": "worker-backtest-v1",
                 "available_at": "2025-01-01T00:00:00Z",
                 "input_hashes": {"prices": "abc", "targets": "def"},
@@ -217,6 +218,7 @@ class PersistenceRoundTripTests(unittest.TestCase):
             (job_dir / "job_result.json").write_text(json.dumps({
                 "execution_state": "failed",
                 "research_outcome": "blocked",
+                "publishable": False,
                 "methodology_version": "worker-backtest-v1",
                 "available_at": "2025-01-01T00:00:00Z",
                 "input_hashes": {},

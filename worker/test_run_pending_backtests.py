@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -211,6 +211,58 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
         self.assertIsNotNone(job_id)
         self.assertIsNotNone(metrics_row)
         self.assertGreater(equity_row_count, 0)
+
+    @unittest.skipUnless(ENGINE_PATH.is_file(), "C++ engine not built: run `make -C backtest`")
+    def test_complete_data_is_marked_completed_and_publishable(self) -> None:
+        backtest_id = self._create_backtest()
+
+        with TemporaryDirectory() as tmp:
+            run_pending_backtests.run_once(self.connection, engine=ENGINE_PATH, output_root=Path(tmp))
+
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT status, research_outcome, publishable FROM backtests WHERE id = %s",
+                    (backtest_id,),
+                )
+                status, outcome, publishable = cursor.fetchone()
+
+        self.assertEqual(status, "completed")
+        self.assertEqual(outcome, "completed")
+        self.assertTrue(publishable)
+
+    @unittest.skipUnless(ENGINE_PATH.is_file(), "C++ engine not built: run `make -C backtest`")
+    def test_incomplete_price_history_finishes_but_is_not_publishable(self) -> None:
+        """The case that used to look identical to a good result: the engine
+        runs fine, so status is 'completed', but the data did not cover the
+        window. research_outcome must say 'collecting' and publishable must
+        be false, with a message explaining why."""
+        backtest_id = self._create_backtest()
+        # Drop the tail of every price series so coverage stops short of END.
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM price_bars WHERE trading_date > %s AND security_id IN "
+                "(SELECT id FROM securities WHERE ticker = ANY(%s))",
+                (END_DATE - timedelta(days=10), list(TICKERS)),
+            )
+
+        with TemporaryDirectory() as tmp:
+            run_pending_backtests.run_once(self.connection, engine=ENGINE_PATH, output_root=Path(tmp))
+
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT status, research_outcome, publishable, validation_messages "
+                    "FROM backtests WHERE id = %s",
+                    (backtest_id,),
+                )
+                status, outcome, publishable, messages = cursor.fetchone()
+
+        self.assertEqual(outcome, "collecting")
+        self.assertFalse(publishable, "incomplete data must never be publishable")
+        codes = [m["code"] for m in messages]
+        self.assertIn("PRICE_HISTORY_ENDS_EARLY", codes)
+        # The engine itself still succeeded, which is exactly why the two
+        # axes have to be reported separately.
+        self.assertIn(status, ("completed", "failed"))
 
     @unittest.skipUnless(ENGINE_PATH.is_file(), "C++ engine not built: run `make -C backtest`")
     def test_run_once_passes_cost_bps_from_parameters_to_the_engine(self) -> None:

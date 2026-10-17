@@ -123,3 +123,46 @@ def test_get_backtest_detail_once_completed_includes_metrics_and_equity_curve(co
 
     assert detail.metrics.total_return == 0.2
     assert len(detail.equity_curve) == 1
+
+
+@requires_db
+def test_a_new_backtest_is_not_publishable_until_the_worker_grades_it(connection, make_user):
+    """Default must be false. A client should never treat a result as
+    trustworthy just because a row exists."""
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection, user_id, CreatePortfolioRequest(name="P1", holdings=[HoldingInput(ticker="AAPL", weight=1.0)])
+    )
+    backtest = backtest_service.create_backtest(connection, user_id, _request(portfolio.id))
+
+    detail = backtest_service.get_backtest_detail(connection, backtest.id, user_id)
+
+    assert detail.publishable is False
+
+
+@requires_db
+def test_detail_separates_execution_status_from_research_trust(connection, make_user):
+    """status='completed' with publishable=False is a real state: the engine
+    ran fine on data that did not cover the window. The API has to expose
+    both so the UI can say 'diagnostic' rather than just 'done'."""
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection, user_id, CreatePortfolioRequest(name="P1", holdings=[HoldingInput(ticker="AAPL", weight=1.0)])
+    )
+    backtest = backtest_service.create_backtest(connection, user_id, _request(portfolio.id))
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """UPDATE backtests SET status = 'completed', research_outcome = 'collecting',
+                      publishable = FALSE,
+                      validation_messages = '[{"code": "PRICE_HISTORY_ENDS_EARLY", "severity": "warning", "message": "x"}]'
+               WHERE id = %s""",
+            (backtest.id,),
+        )
+
+    detail = backtest_service.get_backtest_detail(connection, backtest.id, user_id)
+
+    assert detail.backtest.status == "completed"
+    assert detail.research_outcome == "collecting"
+    assert detail.publishable is False
+    assert detail.validation_messages[0]["code"] == "PRICE_HISTORY_ENDS_EARLY"

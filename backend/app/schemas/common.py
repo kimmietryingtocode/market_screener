@@ -73,6 +73,8 @@ class EquityCurvePoint(BaseModel):
 
 class BacktestDetailResponse(BacktestResponse):
     research_outcome: str | None = None
+    publishable: bool = False
+    available_at: datetime | None = None
     validation_messages: list[dict] = []
     metrics: BacktestMetrics | None = None
     equity_curve: list[EquityCurvePoint] = []

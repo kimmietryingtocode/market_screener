@@ -9,6 +9,8 @@ from app.services.errors import NotFoundError, ValidationError
 class BacktestDetail(NamedTuple):
     backtest: BacktestRow
     research_outcome: str | None
+    publishable: bool
+    available_at: Any
     validation_messages: list[dict]
     metrics: MetricsRow | None
     equity_curve: list[EquityCurveRow]
@@ -51,6 +53,8 @@ def get_backtest_detail(connection: Any, backtest_id: int, user_id: int) -> Back
     return BacktestDetail(
         backtest=owned.backtest,
         research_outcome=owned.research_outcome,
+        publishable=owned.publishable,
+        available_at=owned.available_at,
         validation_messages=owned.validation_messages,
         metrics=metrics,
         equity_curve=equity_curve,
