@@ -378,13 +378,54 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('status is 200 or 502 (quant/network dependent)', () => {",
-                  "  pm.expect([200, 502]).to.include(pm.response.code);",
+                  "pm.test('status is 200, 400 (unanalysable) or 502 (quant down)', () => {",
+                  "  pm.expect([200, 400, 502]).to.include(pm.response.code);",
                   "});",
                   "if (pm.response.code === 200) {",
-                  "  const body = pm.response.json();",
-                  "  pm.test('has sharpe_ratio field', () => pm.expect(body).to.have.property('sharpe_ratio'));",
+                  "  const b = pm.response.json();",
+                  "  pm.test('reports how many observations it used', () => {",
+                  "    pm.expect(b.observations).to.be.a('number').and.to.be.at.least(20);",
+                  "  });",
+                  "  pm.test('drawdown is a real fraction between -100% and 0', () => {",
+                  "    pm.expect(b.max_drawdown).to.be.at.most(0);",
+                  "    pm.expect(b.max_drawdown).to.be.at.least(-1);",
+                  "  });",
+                  "  pm.test('no NaN/Infinity leaked into the JSON', () => {",
+                  "    ['annualized_return','volatility','sharpe_ratio','max_drawdown','total_return'].forEach(k => {",
+                  "      if (b[k] !== null) pm.expect(Number.isFinite(b[k]), k).to.be.true;",
+                  "    });",
+                  "  });",
+                  "  pm.test('sharpe is consistent with return and volatility', () => {",
+                  "    if (b.volatility > 0) {",
+                  "      pm.expect(b.sharpe_ratio).to.be.closeTo(b.annualized_return / b.volatility, 1e-6);",
+                  "    }",
+                  "  });",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /portfolios/{id}/analytics?lookback=5d (too little history -> 400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{backendUrl}}/api/v1/portfolios/{{portfolioId}}/analytics?lookback=5d"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status is 400 or 502, never a 200 with junk metrics', () => {",
+                  "  pm.expect([400, 502]).to.include(pm.response.code);",
+                  "});"
                 ]
               }
             }

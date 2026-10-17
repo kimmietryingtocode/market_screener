@@ -17,7 +17,11 @@ def test_valid_request_returns_the_computed_metrics(monkeypatch):
     response = client.post("/analytics/portfolio", json=VALID_PAYLOAD)
 
     assert response.status_code == 200
-    assert response.json() == {**fake_result, "extra": None}
+    body = response.json()
+    # Assert the fields under test rather than the whole shape, so adding an
+    # optional field to the response model doesn't fail this.
+    for key, value in fake_result.items():
+        assert body[key] == value
 
 
 def test_weights_not_summing_to_one_is_rejected_before_any_computation(monkeypatch):

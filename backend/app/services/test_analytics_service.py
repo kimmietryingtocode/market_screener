@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.schemas import CreatePortfolioRequest, HoldingInput
 from app.services import analytics_service, portfolio_service
 from app.services.conftest import requires_db
-from app.services.errors import NotFoundError, UpstreamServiceError
+from app.services.errors import NotFoundError, UpstreamServiceError, ValidationError
 
 QUANT_URL = f"{settings.quant_service_url}/analytics/portfolio"
 
@@ -76,6 +76,57 @@ def test_portfolio_with_no_holdings_or_not_owned_raises_not_found(connection, ma
 
 
 @requires_db
+def test_unanalysable_portfolio_is_a_validation_error_not_a_bad_gateway(connection, make_user):
+    """A 422 from quant means "this portfolio can't be analysed" (unknown
+    ticker, too little history). Reporting that as 502 would tell the user
+    our dependency is broken when the request is the problem."""
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection, user_id, CreatePortfolioRequest(name="P1", holdings=[HoldingInput(ticker="AAPL", weight=1.0)])
+    )
+
+    with respx.mock:
+        respx.post(QUANT_URL).mock(
+            return_value=httpx.Response(422, json={"detail": "insufficient price history: 2 daily returns"})
+        )
+        with pytest.raises(ValidationError, match="insufficient price history"):
+            analytics_service.get_portfolio_analytics(connection, portfolio.id, user_id)
+
+
+@requires_db
+def test_lookback_is_part_of_the_cache_key(connection, make_user, fake_redis):
+    """Two lookbacks are two different questions; one must not serve the
+    other's cached answer."""
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection, user_id, CreatePortfolioRequest(name="P1", holdings=[HoldingInput(ticker="AAPL", weight=1.0)])
+    )
+
+    with respx.mock:
+        route = respx.post(QUANT_URL).mock(return_value=httpx.Response(200, json=FAKE_RESULT))
+        analytics_service.get_portfolio_analytics(connection, portfolio.id, user_id, "1y")
+        analytics_service.get_portfolio_analytics(connection, portfolio.id, user_id, "3mo")
+
+        assert route.call_count == 2  # not served from the 1y entry
+
+    assert len(fake_redis.store) == 2
+
+
+@requires_db
+def test_requested_lookback_is_forwarded_to_the_quant_service(connection, make_user):
+    user_id = make_user()
+    portfolio, _ = portfolio_service.create_portfolio(
+        connection, user_id, CreatePortfolioRequest(name="P1", holdings=[HoldingInput(ticker="AAPL", weight=1.0)])
+    )
+
+    with respx.mock:
+        route = respx.post(QUANT_URL).mock(return_value=httpx.Response(200, json=FAKE_RESULT))
+        analytics_service.get_portfolio_analytics(connection, portfolio.id, user_id, "6mo")
+
+        assert json.loads(route.calls[0].request.content)["lookback"] == "6mo"
+
+
+@requires_db
 def test_upstream_non_200_raises_upstream_service_error(connection, make_user):
     user_id = make_user()
     portfolio, _ = portfolio_service.create_portfolio(
@@ -83,7 +134,9 @@ def test_upstream_non_200_raises_upstream_service_error(connection, make_user):
     )
 
     with respx.mock:
-        respx.post(QUANT_URL).mock(return_value=httpx.Response(422, json={"detail": "bad ticker"}))
+        # 5xx is a genuine dependency failure, unlike 422 which means the
+        # request itself was unanalysable.
+        respx.post(QUANT_URL).mock(return_value=httpx.Response(503, json={"detail": "provider down"}))
         with pytest.raises(UpstreamServiceError):
             analytics_service.get_portfolio_analytics(connection, portfolio.id, user_id)
 
