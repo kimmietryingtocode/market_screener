@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -116,7 +117,17 @@ def _read_summary(summary_path: Path) -> dict[str, dict[str, float | None]]:
     with summary_path.open(newline="") as handle:
         for record in csv.DictReader(handle):
             def parse(value: str) -> float | None:
-                return float(value) if value not in (None, "") else None
+                """The engine writes `nan` for metrics it cannot define — a
+                Sharpe with zero volatility, a CAGR over zero elapsed time.
+                Postgres NUMERIC happily stores NaN and hands it back, and it
+                then serializes as the bare token NaN, which is not valid
+                JSON and which JSON.parse rejects outright. Undefined is
+                NULL, not a number.
+                """
+                if value in (None, ""):
+                    return None
+                parsed = float(value)
+                return parsed if math.isfinite(parsed) else None
 
             metrics[record["metric"]] = {
                 "portfolio": parse(record["portfolio"]),
@@ -147,7 +158,10 @@ def import_job_result(
     # belong next to the engine's own validation output, not just in logs.
     messages = list(coverage_messages or []) + list(result["validation_messages"])
 
-    with connection.cursor() as cursor:
+    # One transaction for the whole import. The equity curve is replaced by a
+    # DELETE followed by inserts; under autocommit a failure in between would
+    # leave the curve permanently gone with the metrics still written.
+    with connection.transaction(), connection.cursor() as cursor:
         cursor.execute(
             """
             UPDATE backtests SET

@@ -16,40 +16,60 @@ class RankingRow(NamedTuple):
     methodology_version: str
 
 
-def latest_score_date(connection: Any, methodology_version: str | None = None) -> date | None:
+def latest_run(connection: Any, methodology_version: str | None = None) -> tuple[date, str] | None:
+    """Resolve the most recent scoring run as a (score_date, methodology) pair.
+
+    Both halves matter. Filtering on score_date alone lets two methodology
+    versions scored on the same day land in one ranking, which puts the same
+    ticker in the list twice and orders scores produced by different
+    methodologies against each other as if they were comparable. Running a
+    new version alongside the old one to compare them is normal practice, so
+    this has to resolve to exactly one version.
+    """
     with connection.cursor() as cursor:
         if methodology_version:
             cursor.execute(
-                "SELECT max(score_date) FROM scores WHERE methodology_version = %s",
+                """
+                SELECT score_date, methodology_version FROM scores
+                WHERE methodology_version = %s
+                ORDER BY score_date DESC
+                LIMIT 1
+                """,
                 (methodology_version,),
             )
         else:
-            cursor.execute("SELECT max(score_date) FROM scores")
+            # Newest date wins; among versions sharing it, the highest
+            # version string, so the choice is deterministic rather than
+            # whatever the planner returns first.
+            cursor.execute(
+                """
+                SELECT score_date, methodology_version FROM scores
+                ORDER BY score_date DESC, methodology_version DESC
+                LIMIT 1
+                """
+            )
         row = cursor.fetchone()
-        return row[0] if row else None
+        return (row[0], row[1]) if row else None
 
 
 def top_ranked(
     connection: Any,
     *,
     score_date: date,
+    methodology_version: str,
     limit: int,
     sector: str | None = None,
-    methodology_version: str | None = None,
 ) -> list[RankingRow]:
-    """Highest composite scores for one score_date, best first."""
+    """Highest composite scores for one (score_date, methodology) run."""
     query = """
         SELECT sec.ticker, sec.company_name, sec.sector, sc.score_date,
                sc.momentum_score, sc.fundamental_score, sc.composite_score,
                sc.components, sc.methodology_version
         FROM scores sc
         JOIN securities sec ON sec.id = sc.security_id
-        WHERE sc.score_date = %s
+        WHERE sc.score_date = %s AND sc.methodology_version = %s
     """
-    params: list[Any] = [score_date]
-    if methodology_version:
-        query += " AND sc.methodology_version = %s"
-        params.append(methodology_version)
+    params: list[Any] = [score_date, methodology_version]
     if sector:
         query += " AND sec.sector = %s"
         params.append(sector)
