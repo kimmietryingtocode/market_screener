@@ -22,7 +22,9 @@ services:
   # a brand-new empty volume and leaves every other environment (a restart,
   # a second developer, staging) with no record of what's applied.
   migrate:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     entrypoint: ["python", "migrate.py"]
     environment:
@@ -44,7 +46,9 @@ services:
       - "8000:8000"
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}

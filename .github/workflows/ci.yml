@@ -65,7 +65,7 @@ jobs:
       - name: Backend tests
         working-directory: backend
         env:
-          PYTHONPATH: .
+          PYTHONPATH: .:..
         run: python -m pytest app test_migrate.py -v
 
   quant:
@@ -180,7 +180,7 @@ jobs:
       - name: Start services
         run: |
           (cd quant && PYTHONPATH=. python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &)
-          (cd backend && PYTHONPATH=. python -m uvicorn app.main:app --host 127.0.0.1 --port 8081 &)
+          (cd backend && PYTHONPATH=.:.. python -m uvicorn app.main:app --host 127.0.0.1 --port 8081 &)
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:8000/healthz && curl -sf http://127.0.0.1:8081/healthz && break
             sleep 2
