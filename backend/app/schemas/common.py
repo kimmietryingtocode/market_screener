@@ -10,6 +10,17 @@ class AuthRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     token: str
+    email: str | None = None
+    display_name: str | None = None
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(min_length=100, max_length=8192)
+
+
+class GoogleAuthConfigResponse(BaseModel):
+    enabled: bool
+    client_id: str | None = None
 
 
 class HoldingInput(BaseModel):
@@ -85,7 +96,16 @@ class RankingEntry(BaseModel):
     sector: str | None = None
     score_date: date
     momentum_score: float
-    fundamental_score: float
+    fundamental_score: float | None
     composite_score: float
     components: dict = {}
     methodology_version: str
+
+
+class FactSetImportResponse(BaseModel):
+    success: bool
+    imported_count: int
+    error_count: int
+    warning_count: int
+    validation_messages: list[dict] = []
+    rankings: list[RankingEntry] = []

@@ -15,7 +15,7 @@ All public endpoints are served by `backend/` FastAPI. JSON field names use `sna
 Response `201`:
 
 ```json
-{ "token": "<jwt>" }
+{ "token": "<jwt>", "email": "demo@example.com", "display_name": null }
 ```
 
 ### Login
@@ -25,7 +25,41 @@ Response `201`:
 Request is the same as register. Response:
 
 ```json
-{ "token": "<jwt>" }
+{ "token": "<jwt>", "email": "demo@example.com", "display_name": null }
+```
+
+### Google sign-in
+
+`GET /api/v1/auth/google/config`
+
+```json
+{
+  "enabled": true,
+  "client_id": "123456789-example.apps.googleusercontent.com"
+}
+```
+
+The client ID is public OAuth configuration. No client secret is returned or
+used by this sign-in flow.
+
+`POST /api/v1/auth/google`
+
+The browser obtains `credential` from Google Identity Services. FastAPI verifies
+its signature, audience, issuer, expiry, and verified email before issuing the
+application JWT.
+
+```json
+{ "credential": "<google-id-token>" }
+```
+
+Response `200`:
+
+```json
+{
+  "token": "<jwt>",
+  "email": "demo@gmail.com",
+  "display_name": "Demo Investor"
+}
 ```
 
 Protected endpoints send:
@@ -36,28 +70,25 @@ Authorization: Bearer <jwt>
 
 ## Rankings
 
-This endpoint is a planned public contract. It is not implemented in the
-current backend yet.
+The current rankings feed is public because it contains no user-specific data.
 
-`GET /api/v1/rankings/latest`
+`GET /api/v1/rankings?limit=20&sector=Technology&methodology_version=v1`
 
 ```json
-{
-  "score_date": "2026-09-20",
-  "benchmark": "SPY",
-  "methodology_version": "v1",
-  "stocks": [
-    {
-      "rank": 1,
-      "ticker": "AAPL",
-      "company_name": "Apple Inc.",
-      "sector": "Technology",
-      "composite_score": 84.2,
-      "momentum_score": 91.0,
-      "fundamental_score": 74.1
-    }
-  ]
-}
+[
+  {
+    "rank": 1,
+    "ticker": "AAPL",
+    "company_name": "Apple Inc.",
+    "sector": "Technology",
+    "score_date": "2026-09-20",
+    "momentum_score": 91.0,
+    "fundamental_score": 74.1,
+    "composite_score": 84.2,
+    "components": {},
+    "methodology_version": "v1"
+  }
+]
 ```
 
 ## Backtests

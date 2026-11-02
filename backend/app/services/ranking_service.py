@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.repositories import scores_repository
+from app.repositories import recommendations_repository, scores_repository
 from app.repositories.scores_repository import RankingRow
 from app.services.errors import NotFoundError, ValidationError
 
@@ -23,6 +23,10 @@ def get_rankings(
     if limit < 1 or limit > MAX_LIMIT:
         raise ValidationError(f"limit must be between 1 and {MAX_LIMIT}")
 
+    if methodology_version is None:
+        recommendations = recommendations_repository.top_ranked(limit=limit, sector=sector)
+        if recommendations:
+            return recommendations
     score_date = scores_repository.latest_score_date(connection, methodology_version)
     if score_date is None:
         raise NotFoundError("no scores have been calculated yet")

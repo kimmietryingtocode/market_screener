@@ -10,7 +10,7 @@ class RankingRow(NamedTuple):
     sector: str | None
     score_date: date
     momentum_score: float
-    fundamental_score: float
+    fundamental_score: float | None
     composite_score: float
     components: dict
     methodology_version: str

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Create portfolios, review published rankings, and run historical backtests." />
+    <meta name="referrer" content="no-referrer-when-downgrade" />
+    <title>Signalist</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="auth-view" id="auth-view" aria-labelledby="auth-title">
+      <div class="auth-card">
+        <a class="brand auth-brand" href="#" aria-label="Signalist home">
+          <span class="brand__mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 16.5 9 11l3.5 3.5L20 6.5" /><path d="M15 6.5h5v5" /></svg>
+          </span>
+          <span>signalist</span>
+        </a>
+        <h1 id="auth-title">Continue with Google</h1>
+        <p class="auth-subtitle">Sign in or create your account with one secure step.</p>
+        <div class="google-button" id="google-button" hidden></div>
+        <p class="auth-status" id="auth-status" role="status" aria-live="polite">Preparing Google sign-in…</p>
+        <p class="form-error" id="auth-error" role="alert" hidden></p>
+        <button class="secondary-button auth-retry" id="retry-google" type="button" hidden>Try again</button>
+        <p class="auth-terms">For research use only. Not investment advice.</p>
+      </div>
+    </section>
+
+    <div id="app-shell" hidden>
+      <a class="skip-link" href="#main-content">Skip to content</a>
+      <header class="topbar">
+        <div class="topbar__inner">
+          <a class="brand" href="#overview" aria-label="Signalist home">
+            <span class="brand__mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 16.5 9 11l3.5 3.5L20 6.5" /><path d="M15 6.5h5v5" /></svg>
+            </span>
+            <span>signalist</span>
+          </a>
+          <div class="topbar__actions">
+            <button class="help-button" id="open-guide" type="button">Help</button>
+            <button class="profile-button" id="profile-button" type="button" aria-label="Open account menu" aria-expanded="false">
+              <span id="profile-initials">SI</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" /></svg>
+            </button>
+          </div>
+          <div class="profile-menu" id="profile-menu" hidden>
+            <strong id="profile-name">Account</strong>
+            <span id="profile-email"></span>
+            <button id="logout-button" type="button">Sign out</button>
+          </div>
+        </div>
+      </header>
+
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <div class="primary-nav__inner">
+          <a href="#overview">Overview</a>
+          <a href="#rankings" id="rankings-nav">Recommendations</a>
+          <a href="#portfolio">Portfolio</a>
+          <a href="#backtests">Backtests</a>
+        </div>
+      </nav>
+
+      <main id="main-content" class="dashboard">
+        <section class="welcome" id="overview">
+          <p class="eyebrow" id="current-date"></p>
+          <h1 id="welcome-title">Welcome.</h1>
+          <p id="welcome-message">Loading your account…</p>
+        </section>
+
+        <section class="card rankings-card" id="rankings" aria-labelledby="rankings-title">
+          <div class="card-header rankings-header">
+            <div>
+              <p class="section-kicker" id="ranking-version">Step 1 · Recommendations</p>
+              <h2 id="rankings-title">Companies surfaced by our ranking</h2>
+              <p id="ranking-status" aria-live="polite">Loading rankings…</p>
+            </div>
+            <span class="result-count" id="ranking-count"></span>
+          </div>
+          <div class="sector-tabs" role="group" aria-label="Filter rankings by sector">
+            <button class="active" type="button" aria-pressed="true" data-sector="All">All</button>
+            <button type="button" aria-pressed="false" data-sector="Healthcare">Healthcare</button>
+            <button type="button" aria-pressed="false" data-sector="Energy">Energy</button>
+            <button type="button" aria-pressed="false" data-sector="Financial Services">Financial Services</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Rank</th><th scope="col">Company</th><th scope="col">Ranking score</th><th scope="col">FactSet review</th><th scope="col"><span class="sr-only">Portfolio action</span></th></tr></thead>
+              <tbody id="ranking-rows"><tr><td class="empty-table" colspan="5">Loading rankings…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="retry-row"><button class="secondary-button" id="retry-rankings" type="button" hidden>Try again</button></div>
+          <form class="factset-intake" id="factset-form">
+            <div><p class="section-kicker">Optional deeper review</p><h3>Validate with FactSet Summary</h3><p>Upload the complete Standardized Summary CSV package for the recommended companies. The existing quality gate will validate the files and publish the companies that pass.</p></div>
+            <label class="file-picker" for="factset-files">Choose CSV files<input id="factset-files" type="file" accept=".csv,text/csv" multiple required /></label>
+            <button class="secondary-button" id="run-factset" type="submit">Run FactSet review</button>
+            <p class="factset-status" id="factset-status" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="card portfolio-card" id="portfolio" aria-labelledby="portfolio-heading">
+          <div class="card-header">
+            <div><p class="section-kicker">Step 2</p><h2 id="portfolio-heading">Build a portfolio</h2></div>
+          </div>
+          <div class="state-panel" id="portfolio-loading" aria-live="polite"><p>Loading your portfolio…</p></div>
+          <div class="state-panel" id="portfolio-empty" hidden>
+            <span class="state-number">2</span>
+            <h3>Use a recommendation or choose your own stocks</h3>
+            <p>Add companies from the ranking above, or enter any ticker symbols you want to test. Holdings start at equal weights and remain editable.</p>
+            <button class="primary-button" id="create-portfolio" type="button">Create portfolio</button>
+          </div>
+          <div class="state-panel state-panel--error" id="portfolio-error-state" hidden>
+            <h3>We could not load your portfolio</h3><p id="portfolio-load-error"></p>
+            <button class="secondary-button" id="retry-portfolio" type="button">Try again</button>
+          </div>
+          <div class="portfolio-content" id="portfolio-content" hidden>
+            <div class="portfolio-summary">
+              <div><h3 id="portfolio-name-display"></h3><p id="portfolio-created"></p></div>
+              <button class="secondary-button" id="edit-portfolio" type="button">Edit portfolio</button>
+            </div>
+            <div class="positions-header"><strong>Holdings</strong><span id="portfolio-position-count"></span></div>
+            <div class="position-chips" id="position-chips"></div>
+          </div>
+        </section>
+
+        <section class="card backtests-card" id="backtests" aria-labelledby="backtests-title">
+          <div class="card-header">
+            <div><p class="section-kicker">Step 3</p><h2 id="backtests-title">Backtest your portfolio</h2></div>
+          </div>
+          <div class="state-panel" id="backtests-locked">
+            <span class="state-number">3</span>
+            <h3>Create a portfolio first</h3>
+            <p>Backtest the ranked companies you selected or any portfolio you built yourself. Complete step 2 to unlock this workspace.</p>
+            <button class="primary-button" id="locked-create-portfolio" type="button">Create portfolio</button>
+          </div>
+
+          <div class="backtest-workspace" id="backtest-workspace" hidden>
+            <aside class="backtest-sidebar">
+              <form class="backtest-form" id="backtest-form">
+                <h3>New backtest</h3>
+                <label for="backtest-portfolio">Portfolio</label>
+                <select id="backtest-portfolio" required></select>
+                <div class="form-grid">
+                  <label>Benchmark<input id="backtest-benchmark" value="SPY" maxlength="16" required /></label>
+                  <label>Rebalancing<select id="backtest-frequency"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></label>
+                  <label>Start date<input id="backtest-start" type="date" required /></label>
+                  <label>End date<input id="backtest-end" type="date" required /></label>
+                  <label>Starting investment ($)<input id="backtest-capital" type="number" min="1" step="1000" value="100000" required /><small class="field-help">Hypothetical cash invested on day one. It scales dollar gains and losses, not the percentage return.</small></label>
+                  <label>Trading cost (bps)<input id="backtest-cost" type="number" min="0" step="1" value="10" required /></label>
+                </div>
+                <p class="form-error" id="backtest-form-error" role="alert" hidden></p>
+                <button class="primary-button" id="run-backtest" type="submit">Run backtest</button>
+              </form>
+              <div class="run-history">
+                <div class="history-heading"><h3>Run history</h3><button id="refresh-backtests" type="button">Refresh</button></div>
+                <div id="backtest-history"><p class="muted">No backtests yet.</p></div>
+              </div>
+            </aside>
+
+            <div class="backtest-results" id="backtest-results">
+              <div class="backtest-empty" id="backtest-empty">
+                <h3>Test your portfolio on historical data</h3>
+                <p>Choose the dates and assumptions, then run a backtest. Results appear here when the worker completes the job.</p>
+              </div>
+              <div id="backtest-detail" hidden>
+                <div class="result-header">
+                  <div><span class="status-badge" id="backtest-status">Queued</span><h3 id="backtest-result-title">Backtest</h3><p id="backtest-result-summary"></p></div>
+                  <button class="secondary-button" id="edit-backtest" type="button">Edit inputs</button>
+                </div>
+                <div class="job-message" id="backtest-job-message"></div>
+                <dl class="run-parameters" id="backtest-parameters"></dl>
+                <div class="metric-grid" id="backtest-metrics" hidden></div>
+                <div class="equity-card" id="equity-card" hidden>
+                  <div class="chart-heading"><div><h4>Growth of capital</h4><p>Portfolio and benchmark values returned by the worker.</p></div><div class="chart-legend"><span><i class="portfolio-key"></i>Portfolio</span><span><i class="benchmark-key"></i>Benchmark</span></div></div>
+                  <svg id="equity-chart" viewBox="0 0 800 300" role="img" aria-label="Portfolio and benchmark equity curves"><g class="chart-grid"><line x1="54" y1="28" x2="780" y2="28"/><line x1="54" y1="150" x2="780" y2="150"/><line x1="54" y1="272" x2="780" y2="272"/></g><path id="benchmark-path" class="benchmark-path"/><path id="portfolio-path" class="portfolio-path"/></svg>
+                </div>
+                <div class="validation-panel" id="backtest-validation" hidden><h4>Run notes</h4><ul id="validation-list"></ul></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="guide-dialog" id="guide-dialog" aria-labelledby="guide-title">
+      <button class="guide-skip" id="guide-skip" type="button">Skip</button>
+      <div class="guide-illustration" id="guide-illustration" aria-hidden="true">1</div>
+      <p class="section-kicker" id="guide-step">1 of 3</p>
+      <h2 id="guide-title">Start with the ranking</h2>
+      <p id="guide-copy">Review the companies surfaced by the latest published screen.</p>
+      <div class="guide-dots" id="guide-dots" aria-label="Guide progress"></div>
+      <div class="guide-actions"><button class="secondary-button" id="guide-back" type="button">Back</button><button class="primary-button" id="guide-next" type="button">Next</button></div>
+    </dialog>
+
+    <dialog class="stock-dialog" id="stock-dialog" aria-labelledby="stock-dialog-title">
+      <form method="dialog" class="dialog-close-form"><button aria-label="Close portfolio dialog">×</button></form>
+      <p class="section-kicker">Portfolio</p><h2 id="stock-dialog-title">Create portfolio</h2>
+      <p id="stock-dialog-description">Add ticker symbols. Holdings will be saved at equal weights.</p>
+      <form id="stock-form">
+        <label for="portfolio-name">Portfolio name</label><input id="portfolio-name" maxlength="120" placeholder="Long-term portfolio" required />
+        <label for="stock-ticker">Ticker symbol</label>
+        <div class="ticker-entry"><input id="stock-ticker" maxlength="16" placeholder="AAPL" autocomplete="off" /><button class="secondary-button" type="submit">Add</button></div>
+      </form>
+      <div class="selected-stocks" id="selected-stocks" aria-live="polite"></div>
+      <p class="form-error" id="portfolio-error" role="alert" hidden></p>
+      <button class="primary-button save-portfolio" id="save-portfolio" type="button" disabled>Save portfolio</button>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="config.js"></script>
+    <script src="session.js"></script>
+    <script src="api.js"></script>
+    <script src="google-auth.js"></script>
+    <script src="onboarding.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

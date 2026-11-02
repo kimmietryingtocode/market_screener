@@ -49,9 +49,10 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       QUANT_SERVICE_URL: http://quant:8000
       REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:4173,http://localhost:5173}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8081:8081"

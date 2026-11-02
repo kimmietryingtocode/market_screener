@@ -41,7 +41,9 @@ Response `201`:
 
 ```json
 {
-  "token": "<jwt>"
+  "token": "<jwt>",
+  "email": "demo@example.com",
+  "display_name": null
 }
 ```
 
@@ -65,9 +67,30 @@ Response `200`:
 
 ```json
 {
-  "token": "<jwt>"
+  "token": "<jwt>",
+  "email": "demo@example.com",
+  "display_name": null
 }
 ```
+
+### Google sign-in
+
+The Google Identity Services browser callback returns an ID token in its
+`credential` field. Send that opaque value to FastAPI; do not decode it and
+trust its claims in the browser.
+
+```http
+POST /api/v1/auth/google
+Content-Type: application/json
+```
+
+```json
+{ "credential": "<google-id-token>" }
+```
+
+FastAPI verifies the token against `GOOGLE_CLIENT_ID` and returns the same
+application JWT shape as email authentication, including the verified Google
+email and display name.
 
 Store the token in the frontend and send it on protected requests:
 
@@ -178,35 +201,51 @@ The FastAPI backend loads holdings from PostgreSQL and calls the quant service
 at `quant:8000`. The browser should call FastAPI, never the quant service
 directly.
 
-## 4. Planned stock ranking contract
+## 4. Stock ranking contract
 
-This route is documented for frontend work but is not implemented in the
-current backend. The frontend should not call it until a backend router is
-added and the route is included in the API verification flow:
+This public route returns the latest scored universe. It supports optional
+`sector` and `methodology_version` filters and a `limit` from 1 to 100:
 
 ```http
-GET /api/v1/rankings/latest
+GET /api/v1/rankings?limit=20&sector=Technology
 ```
 
-Planned response:
+When the database scoring worker has not published a run, the unversioned route
+returns the latest immutable screener recommendation queue. In that initial
+stage, `fundamental_score` is `null` and `components.ranking_stage` is
+`"screened"`; missing FactSet data is never represented as a zero score.
+
+Authenticated users can submit the complete FactSet Standardized Summary CSV
+package for the current queue:
+
+```text
+POST /api/v1/rankings/factset
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+files=<one or more CSV files>
+```
+
+The response reports validation errors or returns the companies that passed
+the existing FactSet financial-quality gate. The market ranking order remains
+unchanged; FactSet filters eligibility rather than inventing a blended score.
+
+Response `200`:
 
 ```json
-{
-  "score_date": "2026-09-20",
-  "benchmark": "SPY",
-  "methodology_version": "v1",
-  "stocks": [
-    {
-      "rank": 1,
-      "ticker": "AAPL",
-      "company_name": "Apple Inc.",
-      "sector": "Technology",
-      "composite_score": 84.2,
-      "momentum_score": 91.0,
-      "fundamental_score": 74.1
-    }
-  ]
-}
+[
+  {
+    "rank": 1,
+    "ticker": "AAPL",
+    "company_name": "Apple Inc.",
+    "sector": "Technology",
+    "score_date": "2026-09-20",
+    "momentum_score": 91.0,
+    "fundamental_score": 74.1,
+    "composite_score": 84.2,
+    "components": {},
+    "methodology_version": "v1"
+  }
+]
 ```
 
 ## 5. Planned backtest contract
