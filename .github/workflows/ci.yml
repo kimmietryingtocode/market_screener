@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: portfolio_user
           POSTGRES_PASSWORD: ci-postgres-password
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: portfolio_user
           POSTGRES_PASSWORD: ci-postgres-password
@@ -140,7 +140,7 @@ jobs:
     needs: [backend, quant]
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: portfolio_user
           POSTGRES_PASSWORD: ci-postgres-password

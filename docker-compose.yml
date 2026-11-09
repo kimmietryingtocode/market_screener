@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     platform: ${DOCKER_PLATFORM:-linux/arm64}
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -58,6 +58,13 @@ services:
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:4173,http://localhost:5173}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      AI_GEMINI_DATA_POLICY: ${AI_GEMINI_DATA_POLICY:-public_only}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      GEMINI_EMBEDDING_DIMENSIONS: ${GEMINI_EMBEDDING_DIMENSIONS:-768}
     ports:
       - "8081:8081"
     # /readyz, not /healthz: readiness verifies it can actually reach
@@ -141,5 +148,47 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    environment:
+      OLLAMA_NO_CLOUD: "1"
+    volumes:
+      - ollama_models:/root/.ollama
+    expose:
+      - "11434"
+    restart: unless-stopped
+
+  analysis-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
+    command: ["python", "-m", "app.ai.worker"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      AI_GEMINI_DATA_POLICY: ${AI_GEMINI_DATA_POLICY:-public_only}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      GEMINI_EMBEDDING_DIMENSIONS: ${GEMINI_EMBEDDING_DIMENSIONS:-768}
+      OLLAMA_BASE_URL: http://ollama:11434
+      AI_MODEL: ${AI_MODEL:-qwen3:4b}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-nomic-embed-text:v1.5}
+      AI_CONTEXT_TOKENS: ${AI_CONTEXT_TOKENS:-4096}
+      AI_MODEL_TIMEOUT_SECONDS: ${AI_MODEL_TIMEOUT_SECONDS:-180}
+      AI_JOB_TIMEOUT_SECONDS: ${AI_JOB_TIMEOUT_SECONDS:-600}
+    volumes:
+      - ./data/screener:/workspace/data/screener:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  ollama_models:

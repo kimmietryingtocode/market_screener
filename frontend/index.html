@@ -75,7 +75,7 @@
               <h2 id="rankings-title">Companies surfaced by our ranking</h2>
               <p id="ranking-status" aria-live="polite">Loading rankings…</p>
             </div>
-            <span class="result-count" id="ranking-count"></span>
+            <div><span class="result-count" id="ranking-count"></span> <button class="secondary-button" id="analyze-recommendations" type="button">Explain rankings</button></div>
           </div>
           <div class="sector-tabs" role="group" aria-label="Filter rankings by sector">
             <button class="active" type="button" aria-pressed="true" data-sector="All">All</button>
@@ -165,6 +165,7 @@
               <div id="backtest-detail" hidden>
                 <div class="result-header">
                   <div><span class="status-badge" id="backtest-status">Queued</span><h3 id="backtest-result-title">Backtest</h3><p id="backtest-result-summary"></p></div>
+                  <button class="secondary-button" id="analyze-backtest" type="button">Analyze run</button>
                   <button class="secondary-button" id="edit-backtest" type="button">Edit inputs</button>
                 </div>
                 <div class="job-message" id="backtest-job-message"></div>
@@ -190,6 +191,15 @@
       <p id="guide-copy">Review the companies surfaced by the latest published screen.</p>
       <div class="guide-dots" id="guide-dots" aria-label="Guide progress"></div>
       <div class="guide-actions"><button class="secondary-button" id="guide-back" type="button">Back</button><button class="primary-button" id="guide-next" type="button">Next</button></div>
+    </dialog>
+
+    <dialog class="stock-dialog" id="ai-dialog" aria-labelledby="ai-title">
+      <form method="dialog" class="dialog-close-form"><button aria-label="Close AI analysis">×</button></form>
+      <p class="section-kicker">AI-assisted analysis</p><h2 id="ai-title">Analysis</h2>
+      <p id="ai-status" role="status" aria-live="polite">Waiting for the analysis model…</p>
+      <article id="ai-report" hidden></article>
+      <div id="ai-messages" aria-live="polite"></div>
+      <form id="ai-chat-form" hidden><label for="ai-chat-input">Ask a follow-up</label><div class="ticker-entry"><input id="ai-chat-input" maxlength="4000" required /><button class="secondary-button" type="submit">Send</button></div></form>
     </dialog>
 
     <dialog class="stock-dialog" id="stock-dialog" aria-labelledby="stock-dialog-title">

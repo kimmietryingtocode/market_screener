@@ -8,6 +8,7 @@ COPY backend/migrations backend/migrations
 COPY backend/migrate.py backend/migrate.py
 COPY screener/pipeline screener/pipeline
 COPY screener/config.yaml screener/config.yaml
+COPY worker/index_ai_documents.py worker/index_ai_documents.py
 
 WORKDIR /workspace/backend
 ENV PYTHONPATH=/workspace/backend:/workspace
