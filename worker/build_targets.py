@@ -30,15 +30,20 @@ def generate_targets_from_portfolio(connection: Any, backtest_id: int) -> int:
     """
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT portfolio_id, start_date, end_date, rebalance_frequency FROM backtests WHERE id = %s",
+            "SELECT start_date, end_date, rebalance_frequency FROM backtests WHERE id = %s",
             (backtest_id,),
         )
         row = cursor.fetchone()
         if row is None:
             raise ValueError(f"no backtest with id {backtest_id}")
-        portfolio_id, start_date, end_date, rebalance_frequency = row
-        if portfolio_id is None:
-            raise ValueError(f"backtest {backtest_id} has no source portfolio to build targets from")
+        start_date, end_date, rebalance_frequency = row
+        # Deliberately not requiring backtests.portfolio_id. The holdings are
+        # frozen into backtest_holdings when the run is requested, precisely
+        # so later edits — including deleting the portfolio, which sets this
+        # column NULL — cannot change or invalidate queued work. Requiring it
+        # here stranded such runs forever: every poll picked them up, failed
+        # them, and logged an error, even though the snapshot held everything
+        # needed. The snapshot check below is the real precondition.
         if rebalance_frequency != "monthly":
             raise ValueError(f"unsupported rebalance_frequency: {rebalance_frequency!r} (only 'monthly' is implemented)")
 

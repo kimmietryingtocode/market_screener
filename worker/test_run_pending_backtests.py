@@ -100,7 +100,14 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
             # backtests/backtest_targets rows created by a test must go
             # before the securities they reference, or the securities
             # delete fails and leaves everything orphaned for the next test.
-            cursor.execute("DELETE FROM backtests WHERE portfolio_id = %s", (self.portfolio_id,))
+            # Match on user_id as well as portfolio_id: a test may null
+            # portfolio_id (deleting a portfolio does exactly that), and a row
+            # missed here keeps its targets alive, which blocks the securities
+            # delete and strands every later test in this class.
+            cursor.execute(
+                "DELETE FROM backtests WHERE portfolio_id = %s OR user_id = %s",
+                (self.portfolio_id, self.user_id),
+            )
             cursor.execute("DELETE FROM securities WHERE ticker = ANY(%s)", (list(TEST_ONLY_TICKERS),))
             cursor.execute("DELETE FROM users WHERE id = %s", (self.user_id,))
 
@@ -251,6 +258,33 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
                 rf"{START_DATE} through {END_DATE}.*TAAPL: 1 missing session",
             ):
                 ingest_prices.ensure_backtest_price_history(self.connection, backtest_id)
+
+    def test_a_deleted_portfolio_does_not_strand_its_backtest(self) -> None:
+        """Regression: holdings are frozen into backtest_holdings when a run
+        is requested, so deleting the portfolio — which sets portfolio_id
+        NULL — must not invalidate it. build_targets still demanded a live
+        portfolio_id, so such runs were stranded: every poll claimed them,
+        failed them and logged an error, though the snapshot held everything
+        needed.
+        """
+        backtest_id = self._create_backtest()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE backtests SET portfolio_id = NULL WHERE id = %s", (backtest_id,)
+            )
+
+        written = build_targets.generate_targets_from_portfolio(self.connection, backtest_id)
+
+        self.assertGreater(written, 0, "a frozen snapshot must still expand into targets")
+
+    def test_a_backtest_without_a_snapshot_is_still_rejected(self) -> None:
+        """The snapshot, not the portfolio link, is the real precondition."""
+        backtest_id = self._create_backtest()
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM backtest_holdings WHERE backtest_id = %s", (backtest_id,))
+
+        with self.assertRaisesRegex(ValueError, "no saved holding snapshot"):
+            build_targets.generate_targets_from_portfolio(self.connection, backtest_id)
 
     def test_generate_targets_is_idempotent(self) -> None:
         backtest_id = self._create_backtest()
