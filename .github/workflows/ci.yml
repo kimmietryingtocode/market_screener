@@ -50,9 +50,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: backend
-        run: |
-          pip install -r requirements.txt
-          pip install pytest respx
+        run: pip install -r requirements-dev.txt
 
       - name: Apply migrations
         working-directory: backend
