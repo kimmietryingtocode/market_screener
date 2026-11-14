@@ -20,6 +20,8 @@ class BacktestRow(NamedTuple):
     rebalance_frequency: str
     created_at: datetime
     completed_at: datetime | None
+    initial_capital: float | None = None
+    cost_bps: float | None = None
 
 
 class BacktestDetailRow(NamedTuple):
@@ -47,7 +49,9 @@ class EquityCurveRow(NamedTuple):
 
 _COLUMNS = """
     id, portfolio_id, status, benchmark, start_date, end_date,
-    rebalance_frequency, created_at, completed_at
+    rebalance_frequency, created_at, completed_at,
+    (parameters ->> 'initial_capital')::float AS initial_capital,
+    (parameters ->> 'cost_bps')::float AS cost_bps
 """
 
 
@@ -113,11 +117,11 @@ def get_owned_backtest(connection: Any, backtest_id: int, user_id: int) -> Backt
         if row is None:
             return None
         return BacktestDetailRow(
-            backtest=BacktestRow(*row[:9]),
-            research_outcome=row[9],
-            publishable=bool(row[10]),
-            available_at=row[11],
-            validation_messages=row[12] or [],
+            backtest=BacktestRow(*row[:11]),
+            research_outcome=row[11],
+            publishable=bool(row[12]),
+            available_at=row[13],
+            validation_messages=row[14] or [],
         )
 
 

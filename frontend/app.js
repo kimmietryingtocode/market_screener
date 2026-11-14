@@ -502,15 +502,20 @@ function renderValidation(messages) {
 }
 
 function renderRunParameters(detail) {
+  // The API is the source of truth: it records what the run actually used.
+  // loadBacktestInputs only remembers what *this browser* submitted, so it is
+  // empty for a run opened in a new session or on another device.
   const submitted = loadBacktestInputs(detail.id);
+  const capital = Number.isFinite(detail.initial_capital) ? detail.initial_capital : submitted.initial_capital;
+  const cost = Number.isFinite(detail.cost_bps) ? detail.cost_bps : submitted.cost_bps;
   const portfolio = portfolios.find((item) => item.id === detail.portfolio_id);
   const values = [
     ["Portfolio", portfolio?.name || `Portfolio ${detail.portfolio_id || "—"}`],
     ["Benchmark", detail.benchmark],
     ["Date range", `${formatDate(detail.start_date)} – ${formatDate(detail.end_date)}`],
     ["Rebalancing", detail.rebalance_frequency],
-    ["Starting investment", submitted.initial_capital ? Number(submitted.initial_capital).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "Not returned by API"],
-    ["Trading cost", Number.isFinite(submitted.cost_bps) ? `${submitted.cost_bps} bps` : "Not returned by API"],
+    ["Starting investment", capital ? Number(capital).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "Not returned by API"],
+    ["Trading cost", Number.isFinite(cost) ? `${cost} bps` : "Not returned by API"],
   ];
   $("#backtest-parameters").innerHTML = values.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
 }

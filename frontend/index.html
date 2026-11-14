@@ -145,7 +145,7 @@
                   <label>Rebalancing<select id="backtest-frequency"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></label>
                   <label>Start date<input id="backtest-start" type="date" required /></label>
                   <label>End date<input id="backtest-end" type="date" required /></label>
-                  <label>Starting investment ($)<input id="backtest-capital" type="number" min="1" step="1000" value="100000" required /><small class="field-help">Hypothetical cash invested on day one. It scales dollar gains and losses, not the percentage return.</small></label>
+                  <label>Starting investment ($)<input id="backtest-capital" type="number" min="1000" step="1000" value="100000" required /><small class="field-help">Hypothetical cash invested on day one. It scales dollar gains and losses, not the percentage return.</small></label>
                   <label>Trading cost (bps)<input id="backtest-cost" type="number" min="0" step="1" value="10" required /></label>
                 </div>
                 <p class="form-error" id="backtest-form-error" role="alert" hidden></p>

@@ -65,6 +65,8 @@ class BacktestResponse(BaseModel):
     rebalance_frequency: str
     created_at: datetime
     completed_at: datetime | None
+    initial_capital: float | None = None
+    cost_bps: float | None = None
 
 
 class BacktestMetrics(BaseModel):
