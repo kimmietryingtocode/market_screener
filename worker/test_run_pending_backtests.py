@@ -399,13 +399,19 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
         self.assertTrue(publishable)
 
     @unittest.skipUnless(ENGINE_PATH.is_file(), "C++ engine not built: run `make -C backtest`")
-    def test_incomplete_price_history_finishes_but_is_not_publishable(self) -> None:
-        """The case that used to look identical to a good result: the engine
-        runs fine, so status is 'completed', but the data did not cover the
-        window. research_outcome must say 'collecting' and publishable must
-        be false, with a message explaining why."""
+    def test_incomplete_price_history_never_produces_a_publishable_result(self) -> None:
+        """Incomplete coverage must never reach a user as a usable number.
+
+        ensure_backtest_price_history runs before the engine: it backfills
+        the missing sessions from the provider and, if coverage is still
+        short, refuses outright. That is stricter than grading the run as
+        'collecting' afterwards — no result is produced at all. Either way
+        the invariant this asserts is the same one: not publishable.
+        """
         backtest_id = self._create_backtest()
         # Drop the tail of every price series so coverage stops short of END.
+        # These are synthetic tickers, so the provider backfill cannot
+        # rescue them either — exactly the unrecoverable case.
         with self.connection.cursor() as cursor:
             cursor.execute(
                 "DELETE FROM price_bars WHERE trading_date > %s AND security_id IN "
@@ -418,19 +424,19 @@ class BuildTargetsAndPollerTests(unittest.TestCase):
 
             with self.connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT status, research_outcome, publishable, validation_messages "
-                    "FROM backtests WHERE id = %s",
+                    "SELECT status, research_outcome, publishable FROM backtests WHERE id = %s",
                     (backtest_id,),
                 )
-                status, outcome, publishable, messages = cursor.fetchone()
+                status, outcome, publishable = cursor.fetchone()
+                cursor.execute(
+                    "SELECT count(*) FROM backtest_results WHERE backtest_id = %s", (backtest_id,)
+                )
+                result_rows = cursor.fetchone()[0]
 
-        self.assertEqual(outcome, "collecting")
         self.assertFalse(publishable, "incomplete data must never be publishable")
-        codes = [m["code"] for m in messages]
-        self.assertIn("PRICE_HISTORY_ENDS_EARLY", codes)
-        # The engine itself still succeeded, which is exactly why the two
-        # axes have to be reported separately.
-        self.assertIn(status, ("completed", "failed"))
+        self.assertNotEqual(outcome, "completed")
+        self.assertEqual(status, "failed")
+        self.assertEqual(result_rows, 0, "a refused run must not leave metrics behind")
 
     @unittest.skipUnless(ENGINE_PATH.is_file(), "C++ engine not built: run `make -C backtest`")
     def test_run_once_passes_cost_bps_from_parameters_to_the_engine(self) -> None:
