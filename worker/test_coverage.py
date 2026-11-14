@@ -177,6 +177,35 @@ class CoverageAssessmentTests(unittest.TestCase):
         self.assertEqual(report.research_outcome, "collecting")
         self.assertIn("MISSING_EXECUTION_PRICE", [m["code"] for m in report.messages])
 
+    def test_a_window_starting_on_a_weekend_is_not_flagged_incomplete(self) -> None:
+        """Regression: coverage compared the first/last bar against the raw
+        requested dates. A window beginning on a Sunday or ending on a
+        Saturday has no bar on those days because the market was shut, and
+        every such run was wrongly marked not publishable. The form defaults
+        to "five years ago until today", so this fired constantly.
+        """
+        # 2025-01-04 is a Saturday, 2025-02-01 is a Saturday.
+        saturday_start, saturday_end = date(2025, 1, 4), date(2025, 2, 1)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE backtests SET start_date = %s, end_date = %s WHERE id = %s",
+                (saturday_start, saturday_end, self.backtest_id),
+            )
+        # Monday 2025-01-06 is the first real session in that window, which
+        # is what build_targets would schedule execution on.
+        self._add_target("a", execution_date=date(2025, 1, 6))
+        # Price only the real trading sessions, as a provider would.
+        for key in ("a", "bench"):
+            self._add_prices(key, date(2025, 1, 6), date(2025, 1, 31))
+
+        report = coverage.assess(self.connection, self.backtest_id)
+
+        codes = [m["code"] for m in report.messages]
+        self.assertNotIn("PRICE_HISTORY_STARTS_LATE", codes)
+        self.assertNotIn("PRICE_HISTORY_ENDS_EARLY", codes)
+        self.assertEqual(report.research_outcome, "completed")
+        self.assertTrue(report.publishable)
+
     def test_full_coverage_is_completed_and_publishable(self) -> None:
         self._add_target("a")
         self._add_target("b")
