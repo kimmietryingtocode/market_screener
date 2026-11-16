@@ -85,6 +85,26 @@
     return request(`/api/v1/backtests/${backtestId}`, { token });
   }
 
+  function createAIReport(token, payload) {
+    return request("/api/v1/ai/reports", { method: "POST", token, body: payload });
+  }
+
+  function getAIReport(token, reportId) {
+    return request(`/api/v1/ai/reports/${reportId}`, { token });
+  }
+
+  function getAIConfig(token) {
+    return request("/api/v1/ai/config", { token });
+  }
+
+  function getAIMessages(token, reportId) {
+    return request(`/api/v1/ai/reports/${reportId}/messages`, { token });
+  }
+
+  function sendAIMessage(token, reportId, content) {
+    return request(`/api/v1/ai/reports/${reportId}/messages`, { method: "POST", token, body: { content } });
+  }
+
   window.SignalistApi = {
     createBacktest,
     createPortfolio,
@@ -96,5 +116,10 @@
     listBacktests,
     listPortfolios,
     updatePortfolio,
+    createAIReport,
+    getAIReport,
+    getAIConfig,
+    getAIMessages,
+    sendAIMessage,
   };
 })();

@@ -6,6 +6,8 @@ let rankingData = [];
 let selectedBacktestId = null;
 let selectedBacktestDetail = null;
 let backtestPollTimer = null;
+let aiReportId = null;
+let aiPollTimer = null;
 let guideIndex = 0;
 
 const $ = (selector) => document.querySelector(selector);
@@ -258,7 +260,8 @@ function renderRankings(sector = "All") {
       <td><span class="score-pill">${Math.round(stock.score)}</span></td>
       <td><span class="factset-badge ${stock.stage === "factset_validated" ? "validated" : ""}">${stock.fundamentals === null ? escapeHtml(stock.factsetAction || "Summary required") : `Validated · ${Math.round(stock.fundamentals)}`}</span></td>
       <td><button class="row-action" type="button" data-add-ticker="${escapeHtml(stock.ticker)}">Use in portfolio</button>
-        <button class="why-toggle" type="button" data-why="${escapeHtml(stock.ticker)}">Why?</button></td></tr>
+        <button class="why-toggle" type="button" data-why="${escapeHtml(stock.ticker)}">Why?</button>
+        <button class="row-action" type="button" data-ai-stock="${escapeHtml(stock.ticker)}">Explain</button></td></tr>
     <tr class="score-why-row" data-why-row="${escapeHtml(stock.ticker)}" hidden><td colspan="5">${scoreBreakdown(stock)}</td></tr>
   `).join("");
 }
@@ -653,6 +656,47 @@ function renderBacktestDetail(detail) {
   }
 }
 
+function renderAIReport(report) {
+  const provider = report.provider ? ` (${report.provider}, ${report.data_policy || "default policy"})` : "";
+  $("#ai-status").textContent = report.status === "completed" ? `Generated from your stored ranking and backtest data${provider}.` : report.error || `Analysis ${report.status}${provider}…`;
+  if (report.status !== "completed" || !report.report) return;
+  const body = report.report;
+  const citations = (report.citations || []).map((citation) => `<li><strong>${escapeHtml(citation.source_key)}</strong>: ${escapeHtml(citation.excerpt)}</li>`).join("");
+  $("#ai-report").innerHTML = `<h3>${escapeHtml(body.title || "Analysis")}</h3><p>${escapeHtml(body.summary || "")}</p>${(body.sections || []).map((section) => `<section><h4>${escapeHtml(section.title)}</h4><p>${escapeHtml(section.body)}</p></section>`).join("")}<p><strong>Limitations</strong>: ${escapeHtml((body.limitations || []).join(" "))}</p>${citations ? `<h4>Sources</h4><ul>${citations}</ul>` : ""}`;
+  $("#ai-report").hidden = false;
+  $("#ai-chat-form").hidden = false;
+}
+
+async function openAIReport(payload) {
+  if (!session?.token) return;
+  clearTimeout(aiPollTimer);
+  $("#ai-dialog").showModal();
+  $("#ai-report").hidden = true;
+  $("#ai-chat-form").hidden = true;
+  $("#ai-status").textContent = "Queueing analysis…";
+  try {
+    const created = await window.SignalistApi.createAIReport(session.token, payload);
+    aiReportId = created.id;
+    renderAIReport(created);
+    const poll = async () => {
+      const report = await window.SignalistApi.getAIReport(session.token, aiReportId);
+      renderAIReport(report);
+      if (!["completed", "failed"].includes(report.status)) aiPollTimer = setTimeout(poll, 3000);
+      else if (report.status === "completed") loadAIMessages();
+    };
+    aiPollTimer = setTimeout(poll, 1200);
+  } catch (error) {
+    $("#ai-status").textContent = error.message;
+  }
+}
+
+async function loadAIMessages() {
+  if (!aiReportId) return;
+  const messages = await window.SignalistApi.getAIMessages(session.token, aiReportId);
+  $("#ai-messages").innerHTML = messages.map((message) => `<p><strong>${message.role === "assistant" ? "Assistant" : "You"}:</strong> ${escapeHtml(message.content)}</p>`).join("");
+  return messages;
+}
+
 function scheduleBacktestPoll(detail) {
   stopBacktestPolling();
   if (!["queued", "running"].includes(detail.status) || document.hidden) return;
@@ -809,6 +853,30 @@ $("#refresh-backtests").addEventListener("click", loadBacktests);
 $("#backtest-history").addEventListener("click", (event) => {
   const button = event.target.closest("[data-backtest-id]");
   if (button) selectBacktest(button.dataset.backtestId);
+});
+rankingRows.addEventListener("click", (event) => {
+  const explain = event.target.closest("[data-ai-stock]");
+  if (explain) openAIReport({ kind: "stock", ticker: explain.dataset.aiStock });
+});
+$("#analyze-backtest").addEventListener("click", () => {
+  if (selectedBacktestId) openAIReport({ kind: "backtest", backtest_id: selectedBacktestId });
+});
+$("#analyze-recommendations").addEventListener("click", () => openAIReport({ kind: "recommendations" }));
+$("#ai-chat-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = $("#ai-chat-input");
+  if (!input.value.trim() || !aiReportId) return;
+  const content = input.value.trim();
+  input.value = "";
+  await window.SignalistApi.sendAIMessage(session.token, aiReportId, content);
+  $("#ai-status").textContent = "The analysis model is answering…";
+  const pollMessages = async (attempt = 0) => {
+    const messages = await loadAIMessages();
+    const pending = messages?.some((message) => message.role === "user" && message.status === "queued");
+    if (pending && attempt < 20) setTimeout(() => pollMessages(attempt + 1), 1500);
+    else $("#ai-status").textContent = pending ? "The analysis worker is still busy." : "Analysis updated.";
+  };
+  pollMessages();
 });
 $("#edit-backtest").addEventListener("click", () => {
   if (selectedBacktestDetail) {

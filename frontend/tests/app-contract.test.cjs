@@ -136,9 +136,11 @@ function stripNonCode(source) {
 }
 
 const BROWSER_AND_LANGUAGE_GLOBALS = new Set([
-  // Keywords that parse as `name(`
+  // Keywords that parse as `name(`. "async" is here for `async (e) => {}`,
+  // which looks exactly like a call to a function named async.
   "if", "for", "while", "switch", "catch", "return", "typeof", "function",
   "await", "new", "delete", "void", "in", "of", "do", "else", "yield",
+  "async", "super", "this", "import", "throw", "case",
   // Standard library
   "Array", "Boolean", "Date", "Error", "Intl", "JSON", "Map", "Math", "Number",
   "Object", "Promise", "RegExp", "Set", "String", "Symbol", "BigInt",

@@ -15,6 +15,13 @@ from app.schemas.common import (
     PortfolioResponse,
     RankingEntry,
 )
+from app.schemas.ai import (
+    AIConfigResponse,
+    AIMessageResponse,
+    AIReportResponse,
+    CreateAIMessageRequest,
+    CreateAIReportRequest,
+)
 
 __all__ = [
     "AuthRequest",
@@ -32,4 +39,9 @@ __all__ = [
     "HoldingResponse",
     "PortfolioResponse",
     "RankingEntry",
+    "AIMessageResponse",
+    "AIConfigResponse",
+    "AIReportResponse",
+    "CreateAIMessageRequest",
+    "CreateAIReportRequest",
 ]
