@@ -20,6 +20,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from worker import risk
+
 PRICES_HEADER = ["date", "ticker", "adjusted_close"]
 TARGETS_HEADER = ["signal_at", "execution_date", "security_id", "target_weight", "provenance_id"]
 
@@ -136,6 +138,29 @@ def _read_summary(summary_path: Path) -> dict[str, dict[str, float | None]]:
     return metrics
 
 
+def _read_equity_curve(path: Path) -> list[dict[str, Any]]:
+    """The engine writes six columns; three used to be discarded. daily_return
+    feeds the risk measures and drawdown is the underwater series the UI
+    could not draw because it was never stored."""
+    def number(value: str | None) -> float | None:
+        if value in (None, ""):
+            return None
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else None
+
+    with path.open(newline="") as handle:
+        return [
+            {
+                "trading_date": record["date"],
+                "portfolio_value": number(record.get("portfolio_value")),
+                "benchmark_value": number(record.get("benchmark_value")),
+                "daily_return": number(record.get("daily_return")),
+                "drawdown": number(record.get("drawdown")),
+            }
+            for record in csv.DictReader(handle)
+        ]
+
+
 def import_job_result(
     connection: Any,
     backtest_id: int,
@@ -200,19 +225,40 @@ def import_job_result(
         if metric("cagr", "portfolio") is not None and metric("cagr", "benchmark") is not None:
             alpha = metric("cagr", "portfolio") - metric("cagr", "benchmark")
 
+        curve = _read_equity_curve(job_dir / "backtest" / "equity_curve.csv")
+        # The engine reports a daily_return per row; the benchmark's has to
+        # be derived from its value series to compare like with like.
+        portfolio_returns = [p["daily_return"] for p in curve if p["daily_return"] is not None]
+        benchmark_returns = risk.returns_from_values(
+            [p["benchmark_value"] for p in curve if p["benchmark_value"] is not None]
+        )
+        # Beta pairs observation-by-observation, and the engine's first row
+        # is the capital-commitment period, which has no benchmark move to
+        # pair with. Align on the shorter series.
+        width = min(len(portfolio_returns), len(benchmark_returns))
+
         cursor.execute(
             """
             INSERT INTO backtest_results (
                 backtest_id, total_return, annualized_return, volatility,
-                sharpe_ratio, max_drawdown, alpha_vs_benchmark
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                sharpe_ratio, max_drawdown, alpha_vs_benchmark,
+                var_95, cvar_95, beta_vs_benchmark,
+                total_turnover, transaction_costs, average_cash_weight, rebalance_count
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (backtest_id) DO UPDATE SET
                 total_return = EXCLUDED.total_return,
                 annualized_return = EXCLUDED.annualized_return,
                 volatility = EXCLUDED.volatility,
                 sharpe_ratio = EXCLUDED.sharpe_ratio,
                 max_drawdown = EXCLUDED.max_drawdown,
-                alpha_vs_benchmark = EXCLUDED.alpha_vs_benchmark
+                alpha_vs_benchmark = EXCLUDED.alpha_vs_benchmark,
+                var_95 = EXCLUDED.var_95,
+                cvar_95 = EXCLUDED.cvar_95,
+                beta_vs_benchmark = EXCLUDED.beta_vs_benchmark,
+                total_turnover = EXCLUDED.total_turnover,
+                transaction_costs = EXCLUDED.transaction_costs,
+                average_cash_weight = EXCLUDED.average_cash_weight,
+                rebalance_count = EXCLUDED.rebalance_count
             """,
             (
                 backtest_id,
@@ -222,20 +268,33 @@ def import_job_result(
                 metric("sharpe_ratio", "portfolio"),
                 metric("maximum_drawdown", "portfolio"),
                 alpha,
+                risk.historical_var(portfolio_returns),
+                risk.conditional_var(portfolio_returns),
+                risk.beta(portfolio_returns[-width:], benchmark_returns[-width:]) if width >= 2 else None,
+                metric("total_turnover", "portfolio"),
+                metric("transaction_costs", "portfolio"),
+                metric("average_cash_weight", "portfolio"),
+                int(metric("rebalance_count", "portfolio")) if metric("rebalance_count", "portfolio") is not None else None,
             ),
         )
 
         cursor.execute("DELETE FROM equity_curve_points WHERE backtest_id = %s", (backtest_id,))
-        equity_curve_path = job_dir / "backtest" / "equity_curve.csv"
-        with equity_curve_path.open(newline="") as handle:
-            equity_rows = [
-                (backtest_id, record["date"], record["portfolio_value"], record["benchmark_value"])
-                for record in csv.DictReader(handle)
-            ]
+        equity_rows = [
+            (
+                backtest_id,
+                point["trading_date"],
+                point["portfolio_value"],
+                point["benchmark_value"],
+                point["daily_return"],
+                point["drawdown"],
+            )
+            for point in curve
+        ]
         cursor.executemany(
             """
-            INSERT INTO equity_curve_points (backtest_id, trading_date, portfolio_value, benchmark_value)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO equity_curve_points (
+                backtest_id, trading_date, portfolio_value, benchmark_value, daily_return, drawdown
+            ) VALUES (%s, %s, %s, %s, %s, %s)
             """,
             equity_rows,
         )
