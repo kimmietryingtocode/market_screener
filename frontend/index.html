@@ -79,9 +79,6 @@
           </div>
           <div class="sector-tabs" role="group" aria-label="Filter rankings by sector">
             <button class="active" type="button" aria-pressed="true" data-sector="All">All</button>
-            <button type="button" aria-pressed="false" data-sector="Healthcare">Healthcare</button>
-            <button type="button" aria-pressed="false" data-sector="Energy">Energy</button>
-            <button type="button" aria-pressed="false" data-sector="Financial Services">Financial Services</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -173,6 +170,17 @@
                 <div class="equity-card" id="equity-card" hidden>
                   <div class="chart-heading"><div><h4>Growth of capital</h4><p>Portfolio and benchmark values returned by the worker.</p></div><div class="chart-legend"><span><i class="portfolio-key"></i>Portfolio</span><span><i class="benchmark-key"></i>Benchmark</span></div></div>
                   <svg id="equity-chart" viewBox="0 0 800 300" role="img" aria-label="Portfolio and benchmark equity curves"><g class="chart-grid"><line x1="54" y1="28" x2="780" y2="28"/><line x1="54" y1="150" x2="780" y2="150"/><line x1="54" y1="272" x2="780" y2="272"/></g><path id="benchmark-path" class="benchmark-path"/><path id="portfolio-path" class="portfolio-path"/></svg>
+                </div>
+                <div class="chart-card" id="drawdown-card" hidden>
+                  <h4>Underwater curve</h4>
+                  <p class="chart-note">How far below its previous peak the portfolio sat on each day. Recovery to 0% means a new high.</p>
+                  <svg id="drawdown-chart" viewBox="0 0 800 220" role="img" aria-label="Portfolio drawdown over time"><g class="chart-grid"><line x1="54" y1="20" x2="780" y2="20"/><line x1="54" y1="120" x2="780" y2="120"/><line x1="54" y1="200" x2="780" y2="200"/></g><path id="drawdown-path" class="drawdown-path"/><g class="chart-axis" id="drawdown-axis"></g></svg>
+                  <p class="chart-note" id="drawdown-caption"></p>
+                </div>
+                <div class="exec-panel" id="execution-panel" hidden>
+                  <h4>Execution</h4>
+                  <p class="chart-note">What the run cost to trade, and how much of it was actually invested.</p>
+                  <dl id="execution-stats"></dl>
                 </div>
                 <div class="validation-panel" id="backtest-validation" hidden><h4>Run notes</h4><ul id="validation-list"></ul></div>
               </div>

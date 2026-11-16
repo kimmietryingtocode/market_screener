@@ -199,6 +199,52 @@ function score(value) {
   return Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : null;
 }
 
+function scoreBreakdown(stock) {
+  // scores.components records the raw inputs behind every rank. The API has
+  // always returned it; nothing displayed it, so a rank was a number with no
+  // stated reason.
+  const c = stock.components || {};
+  const pct = (v) => metricValue(v, true);
+  const num = (v) => (Number.isFinite(v) ? Number(v).toFixed(2) : "—");
+  const rows = [
+    ["Composite", num(stock.score)],
+    ["Momentum rank", num(stock.momentum)],
+    ["Fundamental rank", stock.fundamentals === null ? "not scored" : num(stock.fundamentals)],
+    ["Trailing return", pct(c.trailing_return)],
+    ["Revenue growth", pct(c.revenue_growth)],
+    ["Operating margin", pct(c.operating_margin)],
+    ["Debt / equity", num(c.debt_to_equity)],
+  ];
+  const used = Number.isFinite(c.fundamental_inputs_used) ? c.fundamental_inputs_used : null;
+  const caveat = used === 0
+    ? "No fundamentals available, so the fundamental score defaults to a neutral 50 rather than penalising the company for missing data."
+    : `Ranks are percentiles within the ${stock.methodologyVersion || "current"} universe, not absolute quality.`;
+  return `<div class="score-why"><strong>Why ${escapeHtml(stock.ticker)} ranks ${stock.rank}</strong>
+    <dl>${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join("")}</dl>
+    <p class="chart-note">${escapeHtml(caveat)}</p></div>`;
+}
+
+function activeSector() {
+  return $(".sector-tabs button.active")?.dataset.sector || "All";
+}
+
+function renderSectorTabs(current = "All") {
+  // Derived from the data, not hardcoded. The fixed list offered Healthcare
+  // (which no security has, so the tab showed nothing) and omitted
+  // Technology, which holds the top-ranked names.
+  const tabs = $(".sector-tabs");
+  if (!tabs) return;
+  const present = [...new Set(rankingData.map((s) => s.sector).filter(Boolean))].sort();
+  // A sector the previous run had may be gone from this one; fall back to All
+  // rather than leaving no tab selected.
+  const selected = present.includes(current) ? current : "All";
+  tabs.innerHTML = ["All", ...present].map((name) => {
+    const active = name === selected;
+    const count = name === "All" ? rankingData.length : rankingData.filter((s) => s.sector === name).length;
+    return `<button class="${active ? "active" : ""}" type="button" aria-pressed="${active}" data-sector="${escapeHtml(name)}">${escapeHtml(name)} (${count})</button>`;
+  }).join("");
+}
+
 function renderRankings(sector = "All") {
   const rows = sector === "All" ? rankingData : rankingData.filter((stock) => stock.sector === sector);
   if (!rows.length) {
@@ -211,7 +257,9 @@ function renderRankings(sector = "All") {
       <td><div class="company-cell"><span class="ticker-avatar">${escapeHtml(stock.ticker.slice(0, 2))}</span><div><strong>${escapeHtml(stock.ticker)}</strong><span>${escapeHtml(stock.name)}</span><small>${escapeHtml(stock.reason || stock.sector)}</small></div></div></td>
       <td><span class="score-pill">${Math.round(stock.score)}</span></td>
       <td><span class="factset-badge ${stock.stage === "factset_validated" ? "validated" : ""}">${stock.fundamentals === null ? escapeHtml(stock.factsetAction || "Summary required") : `Validated · ${Math.round(stock.fundamentals)}`}</span></td>
-      <td><button class="row-action" type="button" data-add-ticker="${escapeHtml(stock.ticker)}">Use in portfolio</button></td></tr>
+      <td><button class="row-action" type="button" data-add-ticker="${escapeHtml(stock.ticker)}">Use in portfolio</button>
+        <button class="why-toggle" type="button" data-why="${escapeHtml(stock.ticker)}">Why?</button></td></tr>
+    <tr class="score-why-row" data-why-row="${escapeHtml(stock.ticker)}" hidden><td colspan="5">${scoreBreakdown(stock)}</td></tr>
   `).join("");
 }
 
@@ -224,7 +272,9 @@ function setRankingEntries(entries) {
     stage: entry.components?.ranking_stage || "published",
     reason: entry.components?.selection_reason || "",
     factsetAction: entry.components?.factset_action || "",
+    components: entry.components || {},
   }));
+  renderSectorTabs(activeSector());
 }
 
 async function loadRankings() {
@@ -242,7 +292,7 @@ async function loadRankings() {
       ? `${validated ? "Financial-quality review" : "Market ranking"} published ${formatDate(latest.scoreDate)}. ${validated ? "These companies passed the FactSet gate." : "Upload the complete FactSet Summary package below for the deeper quality screen."}`
       : "No recommendation run has been published yet.";
     $("#ranking-count").textContent = `${rankingData.length} ${rankingData.length === 1 ? "result" : "results"}`;
-    renderRankings($(".sector-tabs button.active").dataset.sector);
+    renderRankings(activeSector());
   } catch (error) {
     rankingData = [];
     $("#ranking-version").textContent = "Step 1 · Recommendations unavailable";
@@ -272,7 +322,7 @@ async function importFactSet(event) {
       return;
     }
     setRankingEntries(result.rankings);
-    renderRankings($(".sector-tabs button.active").dataset.sector);
+    renderRankings(activeSector());
     $("#ranking-version").textContent = "Step 1 · FactSet validated";
     $("#ranking-status").textContent = `${result.imported_count} companies passed the financial-quality review.`;
     status.textContent = "FactSet review complete. The recommendations above now show the validated set.";
@@ -452,20 +502,70 @@ function metricValue(value, percent = false) {
   return percent ? `${(Number(value) * 100).toFixed(2)}%` : Number(value).toFixed(2);
 }
 
+function renderDrawdown(points) {
+  const valid = (points || []).filter((p) => Number.isFinite(p.drawdown));
+  const card = $("#drawdown-card");
+  if (valid.length < 2) { card.hidden = true; return; }
+
+  const values = valid.map((p) => p.drawdown);
+  const worst = Math.min(...values);
+  // Always anchor the top of the chart at 0: a drawdown plot that rescales
+  // its zero line makes a mild dip look like a crash.
+  const path = pathFor(values, worst, 0, 20, 200);
+  // Close the area UP to the zero line, not down to the floor: the shading is
+  // the water the portfolio is under, so the deepest day must be the most
+  // shaded. Closing downward inverts that and makes a crash look like a peak.
+  $("#drawdown-path").setAttribute("d", `${path} L 780 20 L 54 20 Z`);
+
+  const trough = valid[values.indexOf(worst)];
+  // Two labels only: 0% at the surface and the worst reading at the floor.
+  // A drawdown axis has no other number worth the ink.
+  $("#drawdown-axis").innerHTML =
+    `<text x="48" y="24" text-anchor="end">0%</text>` +
+    `<text x="48" y="204" text-anchor="end">${escapeHtml(metricValue(worst, true))}</text>`;
+
+  $("#drawdown-caption").textContent =
+    `Deepest drawdown ${metricValue(worst, true)} on ${formatDate(trough.trading_date)}, across ${valid.length} sessions.`;
+  $("#drawdown-chart").setAttribute("aria-label",
+    `Drawdown curve, deepest ${metricValue(worst, true)} on ${formatDate(trough.trading_date)}`);
+  card.hidden = false;
+}
+
+function renderExecution(metrics) {
+  const panel = $("#execution-panel");
+  const rows = [
+    ["Turnover", Number.isFinite(metrics?.total_turnover) ? metricValue(metrics.total_turnover, true) : null],
+    ["Transaction costs", Number.isFinite(metrics?.transaction_costs)
+      ? metrics.transaction_costs.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }) : null],
+    ["Average cash weight", Number.isFinite(metrics?.average_cash_weight) ? metricValue(metrics.average_cash_weight, true) : null],
+    ["Rebalances", Number.isFinite(metrics?.rebalance_count) ? String(metrics.rebalance_count) : null],
+  ].filter(([, value]) => value !== null);
+
+  if (!rows.length) { panel.hidden = true; return; }
+  $("#execution-stats").innerHTML = rows
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+  panel.hidden = false;
+}
+
 function renderMetrics(metrics) {
   const definitions = [
-    ["Total return", "total_return", true], ["Annualized return", "annualized_return", true],
-    ["Volatility", "volatility", true], ["Sharpe ratio", "sharpe_ratio", false],
-    ["Max drawdown", "max_drawdown", true], ["Alpha vs. benchmark", "alpha_vs_benchmark", true],
+    ["Total return", "total_return", true, false], ["Annualized return", "annualized_return", true, false],
+    ["Volatility", "volatility", true, false], ["Sharpe ratio", "sharpe_ratio", false, false],
+    ["Max drawdown", "max_drawdown", true, false], ["Alpha vs. benchmark", "alpha_vs_benchmark", true, false],
+    // Tail risk: what a bad day costs, and what the bad days average once
+    // you are already in one. Beta says how much of it is just the market.
+    ["Daily VaR (95%)", "var_95", true, true],
+    ["Daily CVaR (95%)", "cvar_95", true, true],
+    ["Beta vs. benchmark", "beta_vs_benchmark", false, true],
   ];
-  $("#backtest-metrics").innerHTML = definitions.map(([label, key, percent]) => (
-    `<article><span>${label}</span><strong>${metricValue(metrics?.[key], percent)}</strong></article>`
+  $("#backtest-metrics").innerHTML = definitions.map(([label, key, percent, risky]) => (
+    `<article${risky ? ' class="risk-tile"' : ""}><span>${label}</span><strong>${metricValue(metrics?.[key], percent)}</strong></article>`
   )).join("");
   $("#backtest-metrics").hidden = false;
 }
 
-function pathFor(values, min, max) {
-  const left = 54, right = 780, top = 28, bottom = 272;
+function pathFor(values, min, max, top = 28, bottom = 272) {
+  const left = 54, right = 780;
   const span = max - min || 1;
   return values.map((value, index) => {
     const x = left + (index / Math.max(1, values.length - 1)) * (right - left);
@@ -545,6 +645,11 @@ function renderBacktestDetail(detail) {
   if (detail.status === "completed") {
     renderMetrics(detail.metrics);
     renderEquityCurve(detail.equity_curve);
+    renderDrawdown(detail.equity_curve);
+    renderExecution(detail.metrics);
+  } else {
+    $("#drawdown-card").hidden = true;
+    $("#execution-panel").hidden = true;
   }
 }
 
@@ -625,18 +730,29 @@ $("#retry-portfolio").addEventListener("click", loadPortfolios);
 $("#retry-rankings").addEventListener("click", loadRankings);
 $("#factset-form").addEventListener("submit", importFactSet);
 
-document.querySelectorAll(".sector-tabs button").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".sector-tabs button").forEach((item) => {
-      const active = item === button;
-      item.classList.toggle("active", active);
-      item.setAttribute("aria-pressed", String(active));
-    });
-    renderRankings(button.dataset.sector);
+$(".sector-tabs").addEventListener("click", (event) => {
+  // Delegated, because renderSectorTabs rebuilds these buttons from the data.
+  const button = event.target.closest("button[data-sector]");
+  if (!button) return;
+  document.querySelectorAll(".sector-tabs button").forEach((item) => {
+    const active = item === button;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
   });
+  renderRankings(button.dataset.sector);
 });
 
 rankingRows.addEventListener("click", (event) => {
+  const why = event.target.closest("[data-why]");
+  if (why) {
+    const row = rankingRows.querySelector(`[data-why-row="${CSS.escape(why.dataset.why)}"]`);
+    if (row) {
+      row.hidden = !row.hidden;
+      why.textContent = row.hidden ? "Why?" : "Hide";
+    }
+    return;
+  }
+
   const button = event.target.closest("[data-add-ticker]");
   if (!button) return;
   if (currentPortfolio?.holdings.some((holding) => holding.ticker === button.dataset.addTicker)) {
