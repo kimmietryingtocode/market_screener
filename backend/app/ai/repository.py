@@ -119,6 +119,22 @@ def enqueue_message(connection: Any, user_id: int, report_id: int, content: str)
 def claim_job(connection: Any) -> tuple[int, int | None] | None:
     with connection.transaction():
         with connection.cursor() as cursor:
+            # Reap jobs whose worker died mid-run. Ones that have already
+            # used their attempts are failed instead of requeued — without
+            # the cap a job that hangs every time cycles between running and
+            # queued forever, holding the user's one concurrent slot.
+            cursor.execute(
+                "UPDATE ai_reports SET status = 'failed', updated_at = now(), "
+                "error = 'AI job was claimed but never completed' "
+                "WHERE id IN (SELECT report_id FROM ai_jobs WHERE status = 'running' "
+                "AND claimed_at < now() - interval '5 minutes' AND attempts >= %s AND message_id IS NULL)",
+                (max_job_attempts(),),
+            )
+            cursor.execute(
+                "UPDATE ai_jobs SET status = 'failed', error = 'AI job was claimed but never completed' "
+                "WHERE status = 'running' AND claimed_at < now() - interval '5 minutes' AND attempts >= %s",
+                (max_job_attempts(),),
+            )
             cursor.execute("UPDATE ai_jobs SET status = 'queued', claimed_at = NULL WHERE status = 'running' AND claimed_at < now() - interval '5 minutes'")
             cursor.execute(
                 "UPDATE ai_jobs SET status = 'running', claimed_at = now(), attempts = attempts + 1 "
@@ -162,6 +178,63 @@ def save_message_result(connection: Any, report_id: int, message_id: int, conten
             cursor.execute("UPDATE ai_messages SET status = 'completed' WHERE id = %s", (message_id,))
             cursor.execute("INSERT INTO ai_messages (report_id, user_id, role, content, status, citations) SELECT report_id, user_id, 'assistant', %s, 'completed', %s FROM ai_messages WHERE id = %s", (content, json.dumps(citations), message_id))
             cursor.execute("UPDATE ai_jobs SET status = 'completed' WHERE report_id = %s AND message_id = %s", (report_id, message_id))
+
+
+def max_job_attempts() -> int:
+    return max(1, int(os.getenv("AI_JOB_MAX_ATTEMPTS", "4")))
+
+
+# Backoff between attempts. Short enough that a user watching the page sees
+# it recover, long enough that four attempts do not all land inside the same
+# capacity dip. The last value repeats if the cap is raised.
+_RETRY_BACKOFF_SECONDS = (15, 60, 180)
+
+
+def retry_job(connection: Any, report_id: int, message_id: int | None, error: str) -> bool:
+    """Put a job back on the queue after a failure that may not recur.
+
+    ai_jobs already had attempts and run_after, and claim_job already honours
+    both — it only picks up rows whose run_after has passed, and counts every
+    claim. Nothing ever wrote them, though: fail_job marked each failure
+    final, so a 503 from an overloaded model killed the report outright and
+    the user had to notice and ask again. On a free API tier that is the
+    common case, not the rare one.
+
+    Returns True if the job was requeued, False when the attempt cap is
+    reached and the caller should fail it for good.
+    """
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, attempts FROM ai_jobs "
+                "WHERE report_id = %s AND message_id IS NOT DISTINCT FROM %s AND status = 'running' "
+                "FOR UPDATE",
+                (report_id, message_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return False
+            job_id, attempts = row
+            if attempts >= max_job_attempts():
+                return False
+
+            # claim_job increments attempts as it hands the job out, so after
+            # the first run attempts is 1 and the first backoff applies.
+            delay = _RETRY_BACKOFF_SECONDS[min(attempts - 1, len(_RETRY_BACKOFF_SECONDS) - 1)]
+            cursor.execute(
+                "UPDATE ai_jobs SET status = 'queued', claimed_at = NULL, error = %s, "
+                "run_after = now() + make_interval(secs => %s) WHERE id = %s",
+                (error, delay, job_id),
+            )
+            # Back to queued, not failed: the UI polls this and should show
+            # the work as still pending rather than flashing an error that a
+            # retry is about to disprove.
+            if message_id is None:
+                cursor.execute(
+                    "UPDATE ai_reports SET status = 'queued', updated_at = now() WHERE id = %s",
+                    (report_id,),
+                )
+    return True
 
 
 def fail_job(connection: Any, report_id: int, message_id: int | None, error: str) -> None:
