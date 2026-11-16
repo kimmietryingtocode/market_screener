@@ -39,12 +39,20 @@ class MetricsRow(NamedTuple):
     sharpe_ratio: float | None
     max_drawdown: float | None
     alpha_vs_benchmark: float | None
+    var_95: float | None = None
+    cvar_95: float | None = None
+    beta_vs_benchmark: float | None = None
+    total_turnover: float | None = None
+    transaction_costs: float | None = None
+    average_cash_weight: float | None = None
+    rebalance_count: int | None = None
 
 
 class EquityCurveRow(NamedTuple):
     trading_date: date
     portfolio_value: float
     benchmark_value: float
+    drawdown: float | None = None
 
 
 _COLUMNS = """
@@ -130,7 +138,10 @@ def get_results(connection: Any, backtest_id: int) -> MetricsRow | None:
         cursor.execute(
             """
             SELECT total_return, annualized_return, volatility,
-                   sharpe_ratio, max_drawdown, alpha_vs_benchmark
+                   sharpe_ratio, max_drawdown, alpha_vs_benchmark,
+                   var_95, cvar_95, beta_vs_benchmark,
+                   total_turnover, transaction_costs, average_cash_weight,
+                   rebalance_count
             FROM backtest_results WHERE backtest_id = %s
             """,
             (backtest_id,),
@@ -141,19 +152,30 @@ def get_results(connection: Any, backtest_id: int) -> MetricsRow | None:
         # psycopg returns NUMERIC columns as Decimal; cast here so the row
         # actually holds what MetricsRow's type hints promise (float | None)
         # instead of leaking Decimal upward for callers to trip over.
-        return MetricsRow(*(float(value) if value is not None else None for value in row))
+        # rebalance_count is the one integer in the row; everything else is
+        # a NUMERIC that psycopg hands back as Decimal.
+        *numeric, rebalances = row
+        return MetricsRow(
+            *(float(value) if value is not None else None for value in numeric),
+            rebalance_count=int(rebalances) if rebalances is not None else None,
+        )
 
 
 def get_equity_curve(connection: Any, backtest_id: int) -> list[EquityCurveRow]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT trading_date, portfolio_value, benchmark_value
+            SELECT trading_date, portfolio_value, benchmark_value, drawdown
             FROM equity_curve_points WHERE backtest_id = %s ORDER BY trading_date
             """,
             (backtest_id,),
         )
         return [
-            EquityCurveRow(trading_date=row[0], portfolio_value=float(row[1]), benchmark_value=float(row[2]))
+            EquityCurveRow(
+                trading_date=row[0],
+                portfolio_value=float(row[1]),
+                benchmark_value=float(row[2]),
+                drawdown=float(row[3]) if row[3] is not None else None,
+            )
             for row in cursor.fetchall()
         ]

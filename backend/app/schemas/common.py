@@ -76,12 +76,22 @@ class BacktestMetrics(BaseModel):
     sharpe_ratio: float | None = None
     max_drawdown: float | None = None
     alpha_vs_benchmark: float | None = None
+    # Tail risk and benchmark sensitivity, computed once at import.
+    var_95: float | None = None
+    cvar_95: float | None = None
+    beta_vs_benchmark: float | None = None
+    # Execution quality: what the run actually cost to trade.
+    total_turnover: float | None = None
+    transaction_costs: float | None = None
+    average_cash_weight: float | None = None
+    rebalance_count: int | None = None
 
 
 class EquityCurvePoint(BaseModel):
     trading_date: date
     portfolio_value: float
     benchmark_value: float
+    drawdown: float | None = None
 
 
 class BacktestDetailResponse(BacktestResponse):
