@@ -774,7 +774,7 @@
           ]
         },
         {
-          "name": "GET /rankings (no auth -> 401)",
+          "name": "GET /rankings (public, no auth)",
           "request": {
             "method": "GET",
             "url": "{{backendUrl}}/api/v1/rankings"
@@ -784,7 +784,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                  "pm.test('status is 200 or 404 (404 until rankings are published)', () => pm.expect([200, 404]).to.include(pm.response.code));"
                 ]
               }
             }

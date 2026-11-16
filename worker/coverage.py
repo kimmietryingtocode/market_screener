@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
 from typing import Any
 
+from backtest.calendar import nyse_sessions
+
 
 @dataclass
 class CoverageReport:
@@ -127,23 +129,42 @@ def assess(connection: Any, backtest_id: int) -> CoverageReport:
         return report
 
     # Priced, but not across the whole requested window -> still collecting.
+    #
+    # Compare against trading sessions, not the raw calendar dates. A window
+    # that starts on a Sunday or ends on a Saturday has no bar on those days
+    # because the market was shut, which is not missing data. Comparing to
+    # the requested dates flagged every such run as incomplete, and since the
+    # form defaults to "five years ago until today", that is roughly two runs
+    # in seven.
+    sessions = [stamp.date() for stamp in nyse_sessions(start_date, end_date)["date"]]
+    if not sessions:
+        report.research_outcome = "blocked"
+        report.publishable = False
+        report.add(
+            "NO_TRADING_SESSIONS",
+            "error",
+            f"no NYSE sessions fall between {start_date} and {end_date}",
+        )
+        return report
+    first_session, last_session = sessions[0], sessions[-1]
+
     for ticker in required:
         first, last, _count = spans[ticker]
-        if first > start_date:
+        if first > first_session:
             report.research_outcome = "collecting"
             report.publishable = False
             report.add(
                 "PRICE_HISTORY_STARTS_LATE",
                 "warning",
-                f"{ticker} prices begin {first}, after the requested start {start_date}",
+                f"{ticker} prices begin {first}, after the first trading session {first_session}",
             )
-        if last < end_date:
+        if last < last_session:
             report.research_outcome = "collecting"
             report.publishable = False
             report.add(
                 "PRICE_HISTORY_ENDS_EARLY",
                 "warning",
-                f"{ticker} prices end {last}, before the requested end {end_date}",
+                f"{ticker} prices end {last}, before the last trading session {last_session}",
             )
 
     for execution_date, targets_due, targets_priced in execution_rows:

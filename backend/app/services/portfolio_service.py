@@ -19,11 +19,14 @@ def create_portfolio(
 ) -> tuple[PortfolioRow, list[HoldingRow]]:
     validate_weights(payload)
     try:
-        portfolio = portfolios_repository.insert_portfolio(connection, user_id, payload.name)
-        holdings = [
-            portfolios_repository.insert_holding(connection, portfolio.id, holding.ticker.upper(), holding.weight)
-            for holding in payload.holdings
-        ]
+        with connection.transaction():
+            portfolio = portfolios_repository.insert_portfolio(connection, user_id, payload.name)
+            holdings = [
+                portfolios_repository.insert_holding(
+                    connection, portfolio.id, holding.ticker.upper(), holding.weight
+                )
+                for holding in payload.holdings
+            ]
     except UniqueViolation as exc:
         raise ConflictError("portfolio name or ticker already exists") from exc
     return portfolio, holdings
@@ -42,10 +45,11 @@ def update_portfolio(
         raise NotFoundError("portfolio not found")
 
     try:
-        portfolios_repository.update_portfolio_name(connection, portfolio_id, payload.name)
-        holdings = portfolios_repository.replace_holdings(
-            connection, portfolio_id, [(h.ticker.upper(), h.weight) for h in payload.holdings]
-        )
+        with connection.transaction():
+            portfolios_repository.update_portfolio_name(connection, portfolio_id, payload.name)
+            holdings = portfolios_repository.replace_holdings(
+                connection, portfolio_id, [(h.ticker.upper(), h.weight) for h in payload.holdings]
+            )
     except UniqueViolation as exc:
         raise ConflictError("portfolio name or ticker already exists") from exc
 

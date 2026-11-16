@@ -7,10 +7,20 @@ from app.schemas.common import (
     CreateBacktestRequest,
     CreatePortfolioRequest,
     EquityCurvePoint,
+    FactSetImportResponse,
+    GoogleAuthConfigResponse,
+    GoogleAuthRequest,
     HoldingInput,
     HoldingResponse,
     PortfolioResponse,
     RankingEntry,
+)
+from app.schemas.ai import (
+    AIConfigResponse,
+    AIMessageResponse,
+    AIReportResponse,
+    CreateAIMessageRequest,
+    CreateAIReportRequest,
 )
 
 __all__ = [
@@ -22,8 +32,16 @@ __all__ = [
     "CreateBacktestRequest",
     "CreatePortfolioRequest",
     "EquityCurvePoint",
+    "FactSetImportResponse",
+    "GoogleAuthConfigResponse",
+    "GoogleAuthRequest",
     "HoldingInput",
     "HoldingResponse",
     "PortfolioResponse",
     "RankingEntry",
+    "AIMessageResponse",
+    "AIConfigResponse",
+    "AIReportResponse",
+    "CreateAIMessageRequest",
+    "CreateAIReportRequest",
 ]

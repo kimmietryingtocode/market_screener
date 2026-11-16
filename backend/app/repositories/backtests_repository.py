@@ -20,6 +20,8 @@ class BacktestRow(NamedTuple):
     rebalance_frequency: str
     created_at: datetime
     completed_at: datetime | None
+    initial_capital: float | None = None
+    cost_bps: float | None = None
 
 
 class BacktestDetailRow(NamedTuple):
@@ -37,17 +39,27 @@ class MetricsRow(NamedTuple):
     sharpe_ratio: float | None
     max_drawdown: float | None
     alpha_vs_benchmark: float | None
+    var_95: float | None = None
+    cvar_95: float | None = None
+    beta_vs_benchmark: float | None = None
+    total_turnover: float | None = None
+    transaction_costs: float | None = None
+    average_cash_weight: float | None = None
+    rebalance_count: int | None = None
 
 
 class EquityCurveRow(NamedTuple):
     trading_date: date
     portfolio_value: float
     benchmark_value: float
+    drawdown: float | None = None
 
 
 _COLUMNS = """
     id, portfolio_id, status, benchmark, start_date, end_date,
-    rebalance_frequency, created_at, completed_at
+    rebalance_frequency, created_at, completed_at,
+    (parameters ->> 'initial_capital')::float AS initial_capital,
+    (parameters ->> 'cost_bps')::float AS cost_bps
 """
 
 
@@ -78,6 +90,19 @@ def insert_backtest(
         return BacktestRow(*cursor.fetchone())
 
 
+def snapshot_portfolio_holdings(connection: Any, backtest_id: int, portfolio_id: int) -> int:
+    """Copy the submitted portfolio into immutable inputs for this run."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO backtest_holdings (backtest_id, ticker, weight)
+            SELECT %s, ticker, weight FROM holdings WHERE portfolio_id = %s
+            """,
+            (backtest_id, portfolio_id),
+        )
+        return cursor.rowcount
+
+
 def list_backtests(connection: Any, user_id: int) -> list[BacktestRow]:
     with connection.cursor() as cursor:
         cursor.execute(
@@ -100,11 +125,11 @@ def get_owned_backtest(connection: Any, backtest_id: int, user_id: int) -> Backt
         if row is None:
             return None
         return BacktestDetailRow(
-            backtest=BacktestRow(*row[:9]),
-            research_outcome=row[9],
-            publishable=bool(row[10]),
-            available_at=row[11],
-            validation_messages=row[12] or [],
+            backtest=BacktestRow(*row[:11]),
+            research_outcome=row[11],
+            publishable=bool(row[12]),
+            available_at=row[13],
+            validation_messages=row[14] or [],
         )
 
 
@@ -113,7 +138,10 @@ def get_results(connection: Any, backtest_id: int) -> MetricsRow | None:
         cursor.execute(
             """
             SELECT total_return, annualized_return, volatility,
-                   sharpe_ratio, max_drawdown, alpha_vs_benchmark
+                   sharpe_ratio, max_drawdown, alpha_vs_benchmark,
+                   var_95, cvar_95, beta_vs_benchmark,
+                   total_turnover, transaction_costs, average_cash_weight,
+                   rebalance_count
             FROM backtest_results WHERE backtest_id = %s
             """,
             (backtest_id,),
@@ -124,19 +152,30 @@ def get_results(connection: Any, backtest_id: int) -> MetricsRow | None:
         # psycopg returns NUMERIC columns as Decimal; cast here so the row
         # actually holds what MetricsRow's type hints promise (float | None)
         # instead of leaking Decimal upward for callers to trip over.
-        return MetricsRow(*(float(value) if value is not None else None for value in row))
+        # rebalance_count is the one integer in the row; everything else is
+        # a NUMERIC that psycopg hands back as Decimal.
+        *numeric, rebalances = row
+        return MetricsRow(
+            *(float(value) if value is not None else None for value in numeric),
+            rebalance_count=int(rebalances) if rebalances is not None else None,
+        )
 
 
 def get_equity_curve(connection: Any, backtest_id: int) -> list[EquityCurveRow]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT trading_date, portfolio_value, benchmark_value
+            SELECT trading_date, portfolio_value, benchmark_value, drawdown
             FROM equity_curve_points WHERE backtest_id = %s ORDER BY trading_date
             """,
             (backtest_id,),
         )
         return [
-            EquityCurveRow(trading_date=row[0], portfolio_value=float(row[1]), benchmark_value=float(row[2]))
+            EquityCurveRow(
+                trading_date=row[0],
+                portfolio_value=float(row[1]),
+                benchmark_value=float(row[2]),
+                drawdown=float(row[3]) if row[3] is not None else None,
+            )
             for row in cursor.fetchall()
         ]

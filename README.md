@@ -8,8 +8,9 @@ calculations. The backtest engine is C++. PostgreSQL is the source of truth
 and Redis is used for cache and job state.
 
 **Status:** FastAPI migration scaffolded, price ingestion verified against
-Yahoo Finance, and C++ backtest boundary documented. Frontend ownership is
-reserved in `frontend/`; the React application is not initialized yet.
+Yahoo Finance, and C++ backtest boundary documented. The buildless frontend
+supports email/Google authentication, rankings, and portfolio creation, with a
+demo path for running the UI without local infrastructure.
 
 ## Contents
 
@@ -38,6 +39,8 @@ The public API contracts are documented in [docs/api-contracts.md](docs/api-cont
 Frontend request/response examples are in [docs/api-json-guide.md](docs/api-json-guide.md).
 The backtest wrapper, data validation, and database mapping are in
 [docs/data-contract.md](docs/data-contract.md).
+Self-hosted LangGraph/LangChain stock and backtest analysis is documented in
+[docs/self-hosted-rag.md](docs/self-hosted-rag.md).
 
 ## Project layout
 
@@ -228,3 +231,19 @@ In order of what to tackle next:
 4. **Expose the C++ backtest engine** through `worker/run_backtest.py`.
 5. **Wire Redis job state and WebSocket progress.**
 6. **Build the React dashboard and deploy the demo.**
+## AI alpha setup
+
+The AI reports use LangGraph/LangChain with a selectable provider. For the
+partner alpha, Gemini handles published recommendation and stock explanations;
+private backtests stay on Ollama.
+
+```bash
+cp .env.example .env
+# Set GOOGLE_API_KEY in .env, then:
+docker compose up --build
+docker compose run --rm analysis-worker python /workspace/worker/index_ai_documents.py
+```
+
+Use `AI_PROVIDER=ollama` and `docker compose --profile ollama up --build` for
+fully local/private analysis. Never commit `.env` or an API key. Re-run the
+indexer after changing the embedding provider or model.

@@ -17,9 +17,9 @@ difference in metric definition, not in portfolio construction.
 from __future__ import annotations
 
 import csv
+import importlib.util
 import math
 import subprocess
-import sys
 from datetime import date, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -30,11 +30,22 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENGINE = REPO_ROOT / "backtest" / "build" / "portfolio_backtest"
 
-# The analytics implementation lives in the quant service, which is a
-# separate deployable; import it directly so this test compares the real
-# code rather than a copy of its formulas.
-sys.path.insert(0, str(REPO_ROOT / "quant"))
-from app.services import portfolio_analytics as analytics  # noqa: E402
+# The analytics implementation lives in the quant service, a separate
+# deployable, and this test compares the real code rather than a copy of its
+# formulas. Load it straight from its file under a private module name.
+#
+# It must NOT be imported as `app.services.portfolio_analytics` off a
+# sys.path entry pointing at quant/: that binds `app` in sys.modules to
+# quant/app for the whole session, so a later `app.routers.…` import — the
+# backend's own tests, which CI runs in this same pytest invocation — fails
+# with ModuleNotFoundError. Two services both naming their package `app` is
+# the underlying hazard; loading by path sidesteps it entirely.
+_spec = importlib.util.spec_from_file_location(
+    "quant_portfolio_analytics",
+    REPO_ROOT / "quant" / "app" / "services" / "portfolio_analytics.py",
+)
+analytics = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(analytics)
 
 TICKER = "AGREE"
 BENCHMARK = "AGREEBM"

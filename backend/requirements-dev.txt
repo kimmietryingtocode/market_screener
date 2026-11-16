@@ -1,0 +1,9 @@
+-r requirements.txt
+pytest==8.3.2
+respx==0.23.1
+# test_portfolio_backtest_flow.py drives the real worker end to end, and
+# worker.ingest_prices imports screener.pipeline.data, which imports yfinance.
+# The backend runtime never needs it — app/ only reaches screener through
+# factset_pipeline, whose import chain is pandas-only — so it stays out of
+# requirements.txt and the production image.
+yfinance==1.5.1

@@ -10,6 +10,17 @@ class AuthRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     token: str
+    email: str | None = None
+    display_name: str | None = None
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(min_length=100, max_length=8192)
+
+
+class GoogleAuthConfigResponse(BaseModel):
+    enabled: bool
+    client_id: str | None = None
 
 
 class HoldingInput(BaseModel):
@@ -54,6 +65,8 @@ class BacktestResponse(BaseModel):
     rebalance_frequency: str
     created_at: datetime
     completed_at: datetime | None
+    initial_capital: float | None = None
+    cost_bps: float | None = None
 
 
 class BacktestMetrics(BaseModel):
@@ -63,12 +76,22 @@ class BacktestMetrics(BaseModel):
     sharpe_ratio: float | None = None
     max_drawdown: float | None = None
     alpha_vs_benchmark: float | None = None
+    # Tail risk and benchmark sensitivity, computed once at import.
+    var_95: float | None = None
+    cvar_95: float | None = None
+    beta_vs_benchmark: float | None = None
+    # Execution quality: what the run actually cost to trade.
+    total_turnover: float | None = None
+    transaction_costs: float | None = None
+    average_cash_weight: float | None = None
+    rebalance_count: int | None = None
 
 
 class EquityCurvePoint(BaseModel):
     trading_date: date
     portfolio_value: float
     benchmark_value: float
+    drawdown: float | None = None
 
 
 class BacktestDetailResponse(BacktestResponse):
@@ -87,7 +110,16 @@ class RankingEntry(BaseModel):
     sector: str | None = None
     score_date: date
     momentum_score: float
-    fundamental_score: float
+    fundamental_score: float | None
     composite_score: float
     components: dict = {}
     methodology_version: str
+
+
+class FactSetImportResponse(BaseModel):
+    success: bool
+    imported_count: int
+    error_count: int
+    warning_count: int
+    validation_messages: list[dict] = []
+    rankings: list[RankingEntry] = []

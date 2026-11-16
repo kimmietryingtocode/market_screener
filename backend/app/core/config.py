@@ -14,6 +14,7 @@ _REJECTED_JWT_SECRETS = {
 class Settings(BaseSettings):
     database_url: str = "postgresql://localhost:5432/portfolio"
     jwt_secret: str
+    google_client_id: str | None = None
     quant_service_url: str = "http://localhost:8000"
     jwt_ttl_hours: int = 24
     redis_url: str | None = None
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     # Browsers block cross-origin API calls unless the server opts in, so the
     # frontend's origin has to be listed here. Comma-separated; empty means
     # no cross-origin access is permitted.
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = "http://localhost:3000,http://localhost:4173,http://localhost:5173"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

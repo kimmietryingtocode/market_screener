@@ -5,7 +5,7 @@ from app.core import middleware
 from app.core.config import settings
 from app.core.observability import configure_logging
 from app.database.session import lifespan
-from app.routers import analytics, auth, backtests, health, portfolios, rankings
+from app.routers import ai, analytics, auth, backtests, health, portfolios, rankings
 
 configure_logging(settings.log_level)
 
@@ -26,3 +26,4 @@ app.include_router(portfolios.router)
 app.include_router(analytics.router)
 app.include_router(backtests.router)
 app.include_router(rankings.router)
+app.include_router(ai.router)

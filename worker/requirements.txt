@@ -1,7 +1,9 @@
 # Keep the worker image ready for the existing pandas/YAML research adapters.
-pandas==2.2.2
+pandas==2.3.3
 PyYAML==6.0.2
 # persistence.py / build_targets.py / run_pending_backtests.py / ingest_prices.py
 psycopg[binary]==3.2.1
 # ingest_prices.py pulls in screener.pipeline.data, which calls yfinance directly.
 yfinance==1.5.1
+langchain-ollama==0.3.6
+langchain-google-genai==2.1.10

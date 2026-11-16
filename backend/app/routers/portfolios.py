@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, status
 
 from app.core.http_errors import to_http_exception
 from app.core.security import current_user_id
+from app.repositories import portfolios_repository
 from app.schemas import CreatePortfolioRequest, HoldingResponse, PortfolioResponse
 from app.services import portfolio_service
 from app.services.errors import ServiceError
@@ -36,8 +37,22 @@ def list_portfolios(
 ) -> list[PortfolioResponse]:
     with request.app.state.db.connection() as connection:
         portfolios = portfolio_service.list_portfolios(connection, user_id)
+        holdings_by_portfolio = {
+            portfolio.id: portfolios_repository.get_holdings_for_owned_portfolio(
+                connection, portfolio.id, user_id
+            )
+            for portfolio in portfolios
+        }
 
-    return [PortfolioResponse(id=p.id, name=p.name, created_at=p.created_at) for p in portfolios]
+    return [
+        PortfolioResponse(
+            id=p.id,
+            name=p.name,
+            created_at=p.created_at,
+            holdings=[HoldingResponse(**h._asdict()) for h in holdings_by_portfolio[p.id]],
+        )
+        for p in portfolios
+    ]
 
 
 @router.put("/{portfolio_id}", response_model=PortfolioResponse)
