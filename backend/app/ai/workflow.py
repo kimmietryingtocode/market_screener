@@ -66,9 +66,20 @@ def load_facts(connection: Any, context: dict[str, Any]) -> dict[str, Any]:
         score = None
         fundamentals = None
         explanation = None
-        score_date = scores_repository.latest_score_date(connection)
-        if score_date:
-            score_rows = scores_repository.top_ranked(connection, score_date=score_date, limit=100)
+        # latest_run, not a bare score date. Two methodology versions can be
+        # scored on the same day — running a new one beside the old one to
+        # compare them is normal — and resolving on the date alone merges
+        # them, so the same ticker appears twice with scores that were never
+        # comparable. top_ranked requires both halves for that reason.
+        latest = scores_repository.latest_run(connection)
+        if latest:
+            score_date, methodology_version = latest
+            score_rows = scores_repository.top_ranked(
+                connection,
+                score_date=score_date,
+                methodology_version=methodology_version,
+                limit=100,
+            )
             score = next((row for row in score_rows if row.ticker == ticker), None)
         with connection.cursor() as cursor:
             cursor.execute("SELECT s.company_name, s.sector, s.industry, f.period_end, f.filing_date, f.revenue, f.revenue_growth, f.earnings_growth, f.operating_margin, f.free_cash_flow, f.debt_to_equity, f.data_source FROM securities s LEFT JOIN LATERAL (SELECT * FROM fundamental_snapshots WHERE security_id = s.id ORDER BY filing_date DESC LIMIT 1) f ON TRUE WHERE s.ticker = %s", (ticker,))

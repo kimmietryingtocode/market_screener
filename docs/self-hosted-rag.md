@@ -14,7 +14,7 @@ docker compose up --build
 docker compose run --rm analysis-worker python /workspace/worker/index_ai_documents.py
 ```
 
-Gemini uses `gemini-2.5-flash` and `gemini-embedding-001` by default. Override
+Gemini uses `gemini-3.8-flash` and `gemini-embedding-001` by default. Override
 `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL`, or `GEMINI_EMBEDDING_DIMENSIONS` in
 `.env` when needed. The free/public-only policy rejects private backtest
 reports before model invocation. Gemini API keys and prompts must never be

@@ -50,7 +50,7 @@ default:
 AI_PROVIDER=gemini
 AI_GEMINI_DATA_POLICY=public_only
 GOOGLE_API_KEY=...
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 GEMINI_EMBEDDING_DIMENSIONS=768
 ```

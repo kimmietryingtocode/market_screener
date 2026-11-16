@@ -21,7 +21,13 @@ def data_policy() -> str:
 
 
 def model_name() -> str:
-    return os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if provider() == "gemini" else os.getenv("AI_MODEL", "qwen3:4b")
+    # gemini-2.5-flash was the default here, and the API now refuses it for
+    # any key created after it was retired:
+    #   "This model models/gemini-2.5-flash is no longer available to new
+    #    users. Please update your code to use models/gemini-3.8-flash"
+    # An existing key keeps working, so this only broke for someone setting
+    # the project up fresh — which is everyone who clones it.
+    return os.getenv("GEMINI_MODEL", "gemini-3.8-flash") if provider() == "gemini" else os.getenv("AI_MODEL", "qwen3:4b")
 
 
 def embedding_model_name() -> str:
