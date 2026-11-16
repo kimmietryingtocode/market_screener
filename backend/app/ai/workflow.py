@@ -173,13 +173,48 @@ def _chat_model(*, num_predict: int):
     return providers.chat_model(num_predict=num_predict)
 
 
+def _parse_raw(raw_content: str, schema: type[BaseModel]) -> BaseModel | None:
+    """Last resort when with_structured_output hands back nothing.
+
+    langchain's json_schema method does not populate "parsed" for every
+    provider and model combination, and when it gives up it sets
+    parsing_error to None as well — so the caller sees an empty result with
+    no stated reason while the model's answer sits in raw.content, valid and
+    complete. Parsing it here costs nothing and turns that silent dead end
+    into either a usable report or a real error message.
+
+    Some models wrap JSON in a markdown fence even when asked for raw JSON.
+    """
+    text = raw_content.strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        return schema.model_validate_json(text)
+    except Exception:
+        return None
+
+
 def _structured_attempt(model: Any, prompt: str) -> tuple[dict | None, str, str | None]:
     response = model.with_structured_output(AnalysisReport, method="json_schema", include_raw=True).invoke(prompt, stream=False)
     parsed = response.get("parsed")
     raw = response.get("raw")
     raw_content = str(getattr(raw, "content", "") or "")
     payload = parsed.model_dump() if hasattr(parsed, "model_dump") else parsed
-    return payload, raw_content, str(response.get("parsing_error")) if response.get("parsing_error") else None
+
+    if payload is None:
+        recovered = _parse_raw(raw_content, AnalysisReport)
+        if recovered is not None:
+            payload = recovered.model_dump()
+
+    error = str(response.get("parsing_error")) if response.get("parsing_error") else None
+    if payload is None and error is None and raw_content.strip():
+        # Say what actually happened rather than "empty structured response",
+        # which sent a previous investigation looking at token budgets.
+        error = f"model returned content that does not match the schema: {raw_content[:200]}"
+    return payload, raw_content, error
 
 
 def _model_result(facts: dict, citations: list[dict], context: dict) -> dict:
@@ -267,7 +302,7 @@ def run_chat(context: dict[str, Any]) -> str:
     prompt = "Answer only from REPORT_FACTS and CONVERSATION. If the facts do not answer the question, say so. Copy numeric values exactly. Give only the final answer in at most three sentences. Do not give personalized trade advice.\n\nREPORT_FACTS:\n" + json.dumps(facts, default=str) + "\n\nCONVERSATION:\n" + json.dumps(history, default=str)
     model = _chat_model(num_predict=160)
     response = model.with_structured_output(ChatAnswer, method="json_schema", include_raw=True).invoke(prompt, stream=False)
-    parsed = response.get("parsed")
+    parsed = response.get("parsed") or _parse_raw(str(getattr(response.get("raw"), "content", "") or ""), ChatAnswer)
     answer = str(parsed.answer if parsed else "").strip()
     errors = [] if answer else [str(response.get("parsing_error") or "empty answer")]
     unknown_numbers = sorted(_numbers(answer) - _numbers(facts))
@@ -275,7 +310,7 @@ def run_chat(context: dict[str, Any]) -> str:
         errors.append("numbers absent from authoritative facts: " + ", ".join(unknown_numbers))
     if errors:
         response = model.with_structured_output(ChatAnswer, method="json_schema", include_raw=True).invoke(prompt + "\n\nCorrect these validation errors: " + "; ".join(errors), stream=False)
-        parsed = response.get("parsed")
+        parsed = response.get("parsed") or _parse_raw(str(getattr(response.get("raw"), "content", "") or ""), ChatAnswer)
         answer = str(parsed.answer if parsed else "").strip()
         errors = [] if answer else [str(response.get("parsing_error") or "empty answer")]
         unknown_numbers = sorted(_numbers(answer) - _numbers(facts))
