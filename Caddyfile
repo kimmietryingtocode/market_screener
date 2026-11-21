@@ -1,0 +1,54 @@
+# Production edge. Caddy terminates TLS, serves the buildless frontend as
+# static files, and proxies the API on the same origin.
+#
+# Same origin is the point: every frontend call is to /api/v1/..., so with
+# the static files and the API behind one hostname there is no cross-origin
+# request to grant. CORS_ORIGINS can stay empty in production, and no
+# browser preflight sits in front of the first paint.
+#
+# SITE_ADDRESS is the public hostname (e.g. example.duckdns.org), which makes
+# Caddy obtain and renew a certificate automatically. Set it to :80 to serve
+# plain HTTP, which is how this file is verified locally.
+
+# No `email` directive here on purpose. Caddy registers with the ACME
+# provider without a contact address, and an empty `email` is a fatal parse
+# error rather than an ignored blank — so wiring it to an optional
+# environment variable turns a missing nicety into a stack that will not
+# boot. To receive certificate-expiry notices, hard-code it: `email you@host`.
+{
+	admin off
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# Google Identity Services opens a popup and posts the credential back to
+	# the opener, which a strict same-origin COOP would sever. This is the
+	# same pair of headers the local dev server sends.
+	header {
+		Referrer-Policy no-referrer-when-downgrade
+		Cross-Origin-Opener-Policy same-origin-allow-popups
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	# Liveness and readiness are proxied so an uptime check can reach them
+	# without knowing the internal topology.
+	@api path /api/* /healthz /readyz /docs /openapi.json
+	handle @api {
+		reverse_proxy backend:8081 {
+			health_uri /readyz
+			health_interval 15s
+		}
+	}
+
+	handle {
+		root * /srv
+		# no-store rather than a long max-age: there is no build step here, so
+		# filenames never change between deploys. A cached app.js would keep
+		# serving the previous release from the browser with no way to bust it.
+		header Cache-Control "no-store"
+		try_files {path} /index.html
+		file_server
+	}
+}

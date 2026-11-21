@@ -1,0 +1,133 @@
+# Production overlay. Use it alongside the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What it changes:
+#   - Caddy becomes the only thing listening on the host (80/443). Postgres,
+#     Redis, quant and the backend stop publishing host ports, so they are
+#     reachable only on the internal Docker network. The base file publishes
+#     them for local development; leaving that in place on a public VM would
+#     expose an unauthenticated Postgres and Redis to the internet.
+#   - Every service restarts unless stopped, and has a memory ceiling, so one
+#     runaway container cannot take the host down with it.
+#   - Logs are capped. An unbounded json-file log fills the data volume, and
+#     Postgres is on the same volume.
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_started
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  postgres:
+    ports: !reset []
+    restart: unless-stopped
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+    # A cache with no ceiling will happily consume the host. Redis is
+    # cache-and-rate-limit only here, so evicting the least recently used key
+    # is always preferable to an out-of-memory kill.
+    command: ["redis-server", "--maxmemory", "192mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  quant:
+    ports: !reset []
+    restart: unless-stopped
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  backend:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      # Empty on purpose: the frontend is served from this same origin by
+      # Caddy, so there is no cross-origin request to permit. Any value here
+      # would only widen the surface.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  migrate:
+    <<: *logging
+
+  price-ingestor:
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  fundamentals-ingestor:
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  score-calculator:
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  backtest-worker:
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  analysis-worker:
+    <<: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+volumes:
+  caddy_data:
+  caddy_config:
